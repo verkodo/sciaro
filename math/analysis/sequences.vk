@@ -1,0 +1,257 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// Analysis I – sequences of real numbers and their limits: convergence, boundedness, the limit theorems, the squeeze
+// theorem, monotone convergence, Bolzano–Weierstrass and Cauchy sequences. The material of a first course; its order
+// follows the usual textbooks (e.g. O. Forster, Analysis 1, chapters on sequences and limits; OPEN: edition and
+// sections checked). Every statement is proved in Lean 4 with Mathlib; where Mathlib has the theorem, the proof uses
+// it, and the definitions written as in the lecture are bridged to Mathlib's.
+
+module math.analysis.sequences original de, en
+
+concept converges {
+  label de "konvergiert gegen"
+  label en "converges to"
+  params lean "(a : ℕ → ℝ) (L : ℝ)"
+
+  variant eps_n {
+    label de "ε-N-Definition"
+    label en "ε-N definition"
+    lean "∀ ε > 0, ∃ N : ℕ, ∀ n ≥ N, |a n - L| < ε"
+  }
+
+  variant filter {
+    label de "über Umgebungsfilter (Mathlib)"
+    label en "via neighbourhood filters (Mathlib)"
+    lean "Filter.Tendsto a Filter.atTop (nhds L)"
+  }
+
+  bridge eps_n <-> filter {
+    proof lean "by rw [Metric.tendsto_atTop]; simp only [Real.dist_eq]"
+  }
+}
+
+concept bounded {
+  label de "beschränkt"
+  label en "bounded"
+  params lean "(a : ℕ → ℝ)"
+
+  variant abs {
+    label de "über den Betrag"
+    label en "via the absolute value"
+    lean "∃ C : ℝ, ∀ n, |a n| ≤ C"
+  }
+
+  variant range {
+    label de "die Wertemenge ist beschränkt (Mathlib)"
+    label en "its range is bounded (Mathlib)"
+    lean "Bornology.IsBounded (Set.range a)"
+  }
+
+  bridge abs <-> range {
+    proof lean ```
+      by
+        rw [isBounded_iff_forall_norm_le]
+        constructor
+        · rintro ⟨C, hC⟩
+          exact ⟨C, by rintro _ ⟨n, rfl⟩; exact hC n⟩
+        · rintro ⟨C, hC⟩
+          exact ⟨C, fun n => hC _ ⟨n, rfl⟩⟩
+    ```
+  }
+}
+
+concept cauchy {
+  label de "Cauchy-Folge"
+  label en "Cauchy sequence"
+  params lean "(a : ℕ → ℝ)"
+
+  variant eps_n {
+    label de "ε-N-Definition"
+    label en "ε-N definition"
+    lean "∀ ε > 0, ∃ N : ℕ, ∀ m ≥ N, ∀ n ≥ N, |a m - a n| < ε"
+  }
+
+  variant mathlib {
+    label de "als uniforme Struktur (Mathlib)"
+    label en "via the uniform structure (Mathlib)"
+    lean "CauchySeq a"
+  }
+
+  bridge eps_n <-> mathlib {
+    proof lean "by rw [Metric.cauchySeq_iff]; simp only [Real.dist_eq]"
+  }
+}
+
+example const_converges {
+  label de "Konstante Folgen konvergieren gegen ihren Wert"
+  label en "Constant sequences converge to their value"
+  params lean "(c : ℝ)"
+  statement lean "converges (fun _ => c) c"
+  proof lean ```
+    by
+      intro ε hε
+      exact ⟨0, fun n _ => by simpa using hε⟩
+  ```
+}
+
+example one_over_n {
+  label de "1/(n+1) konvergiert gegen 0"
+  label en "1/(n+1) converges to 0"
+  using converges.filter
+  statement lean "converges (fun n : ℕ => 1 / ((n : ℝ) + 1)) 0"
+  proof lean "tendsto_one_div_add_atTop_nhds_zero_nat"
+}
+
+theorem limit_unique {
+  label de "Eindeutigkeit des Grenzwerts"
+  label en "Uniqueness of the limit"
+  params lean "(a : ℕ → ℝ) (L M : ℝ)"
+  using converges.filter
+  statement lean "converges a L → converges a M → L = M"
+  proof lean "fun h₁ h₂ => tendsto_nhds_unique h₁ h₂"
+}
+
+remark limit_notation {
+  label de "Schreibweise"
+  label en "Notation"
+  about limit_unique
+  text de "Weil der Grenzwert eindeutig ist, darf man von dem Grenzwert sprechen und lim a schreiben."
+  text en "Because the limit is unique, one may speak of the limit and write lim a."
+}
+
+theorem convergent_bounded {
+  label de "Konvergente Folgen sind beschränkt"
+  label en "Convergent sequences are bounded"
+  params lean "(a : ℕ → ℝ) (L : ℝ)"
+  using converges.filter, bounded.range
+  statement lean "converges a L → bounded a"
+  proof lean "fun h => Metric.isBounded_range_of_tendsto a h"
+}
+
+theorem limit_add {
+  label de "Grenzwert der Summe"
+  label en "Limit of a sum"
+  params lean "(a b : ℕ → ℝ) (L M : ℝ)"
+  using converges.filter
+  statement lean "converges a L → converges b M → converges (fun n => a n + b n) (L + M)"
+  proof lean "fun h₁ h₂ => h₁.add h₂"
+}
+
+theorem limit_mul {
+  label de "Grenzwert des Produkts"
+  label en "Limit of a product"
+  params lean "(a b : ℕ → ℝ) (L M : ℝ)"
+  using converges.filter
+  statement lean "converges a L → converges b M → converges (fun n => a n * b n) (L * M)"
+  proof lean "fun h₁ h₂ => h₁.mul h₂"
+}
+
+theorem limit_const_mul {
+  label de "Grenzwert eines Vielfachen"
+  label en "Limit of a multiple"
+  params lean "(a : ℕ → ℝ) (c L : ℝ)"
+  using converges.filter
+  statement lean "converges a L → converges (fun n => c * a n) (c * L)"
+  proof lean "fun h => h.const_mul c"
+}
+
+theorem squeeze {
+  label de "Einschließungssatz"
+  label en "Squeeze theorem"
+  params lean "(a b c : ℕ → ℝ) (L : ℝ)"
+  using converges.filter
+  statement lean "converges a L → converges c L → (∀ n, a n ≤ b n) → (∀ n, b n ≤ c n) → converges b L"
+  proof lean "fun ha hc hab hbc => tendsto_of_tendsto_of_tendsto_of_le_of_le ha hc hab hbc"
+}
+
+theorem monotone_converges {
+  label de "Monotone, nach oben beschränkte Folgen konvergieren – gegen ihr Supremum"
+  label en "Monotone sequences bounded above converge – to their supremum"
+  params lean "(a : ℕ → ℝ)"
+  using converges.filter
+  statement lean "Monotone a → BddAbove (Set.range a) → converges a (⨆ n, a n)"
+  proof lean "fun hm hb => tendsto_atTop_ciSup hm hb"
+}
+
+theorem bolzano_weierstrass {
+  label de "Satz von Bolzano–Weierstraß: jede beschränkte Folge hat eine konvergente Teilfolge"
+  label en "Bolzano–Weierstrass: every bounded sequence has a convergent subsequence"
+  params lean "(a : ℕ → ℝ)"
+  using converges.filter, bounded.range
+  statement lean "bounded a → ∃ L : ℝ, ∃ φ : ℕ → ℕ, StrictMono φ ∧ converges (a ∘ φ) L"
+  proof lean ```
+    by
+      intro h
+      obtain ⟨L, -, φ, hφ, hL⟩ := tendsto_subseq_of_bounded h (fun n => ⟨n, rfl⟩)
+      exact ⟨L, φ, hφ, hL⟩
+  ```
+}
+
+theorem convergent_cauchy {
+  label de "Konvergente Folgen sind Cauchy-Folgen"
+  label en "Convergent sequences are Cauchy sequences"
+  params lean "(a : ℕ → ℝ) (L : ℝ)"
+  using converges.filter, cauchy.mathlib
+  statement lean "converges a L → cauchy a"
+  proof lean "fun h => h.cauchySeq"
+}
+
+theorem cauchy_convergent {
+  label de "Vollständigkeit: jede Cauchy-Folge reeller Zahlen konvergiert"
+  label en "Completeness: every Cauchy sequence of real numbers converges"
+  params lean "(a : ℕ → ℝ)"
+  using converges.filter, cauchy.mathlib
+  statement lean "cauchy a → ∃ L : ℝ, converges a L"
+  proof lean "fun h => cauchySeq_tendsto_of_complete h"
+}
+
+remark completeness {
+  label de "Vollständigkeit"
+  label en "Completeness"
+  about cauchy_convergent
+  text de "Dass jede Cauchy-Folge konvergiert, unterscheidet die reellen von den rationalen Zahlen: Die Dezimalnäherungen von √2 bilden eine Cauchy-Folge rationaler Zahlen ohne rationalen Grenzwert."
+  text en "That every Cauchy sequence converges sets the real numbers apart from the rational ones: the decimal approximations of √2 form a Cauchy sequence of rationals without a rational limit."
+}
+
+path lecture {
+  label de "Analysis I – Folgen und Grenzwerte"
+  label en "Analysis I – sequences and limits"
+  step converges.eps_n
+  step const_converges
+  step one_over_n
+  step limit_unique
+  step limit_notation
+  step bounded.abs
+  step convergent_bounded
+  step limit_add
+  step limit_mul
+  step limit_const_mul
+  step squeeze
+  step monotone_converges
+  step bolzano_weierstrass
+  step cauchy.eps_n
+  step convergent_cauchy
+  step cauchy_convergent
+  step completeness
+}
+
+path lecture_filter {
+  label de "Analysis I – Folgen und Grenzwerte (Zugang über Filter, wie in Mathlib)"
+  label en "Analysis I – sequences and limits (via filters, as in Mathlib)"
+  step converges.filter
+  step limit_unique
+  step limit_notation
+  step bounded.range
+  step convergent_bounded
+  step limit_add
+  step limit_mul
+  step limit_const_mul
+  step squeeze
+  step monotone_converges
+  step bolzano_weierstrass
+  step cauchy.mathlib
+  step convergent_cauchy
+  step cauchy_convergent
+  step converges.eps_n
+  step const_converges
+}
