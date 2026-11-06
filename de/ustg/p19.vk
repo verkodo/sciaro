@@ -1,0 +1,597 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// § 19 UStG – Besteuerung der Kleinunternehmer (small business scheme), the version in force from 2025-01-01.
+// Not legal or tax advice.
+//
+// Source: the official text at https://www.gesetze-im-internet.de/ustg_1980/__19.html (retrieved 2026-11-06),
+// paragraphs 1 to 6 – every rule below names the sentence it comes from. This version was given by Art. 25 of the
+// Jahressteuergesetz 2024 (BGBl. 2024 I Nr. 387, published 2024-12-05 per https://www.recht.bund.de/bgbl/1/2024/387/VO.html);
+// that it applies from 2025-01-01 is taken from the unofficial compilation https://www.buzer.de/19_UStG.htm
+// (retrieved 2026-11-06). OPEN: the entry into force of Art. 25 checked in the Gazette itself; whether the later
+// amendment buzer.de names for the act (Art. 9, BGBl. 2026 I Nr. 39) touched § 19 – the official text above is the
+// one in force when it was retrieved. Earlier versions (22,000/50,000 euros until 2024): OPEN until checked against
+// the Gazette.
+//
+// Readings – where the text leaves a choice, this file says which one it takes:
+// - "im laufenden Kalenderjahr 100 000 Euro nicht überschreitet": the current year's total turnover is counted
+//   including the supply in question, so the supply with which the limit is exceeded is no longer exempt.
+//   OPEN: the administrative guidance on this (BMF).
+// - Para. 4 "gilt Absatz 1 entsprechend": for a business established elsewhere in the EU, the limits of para. 1
+//   apply to its total turnover in Germany, in addition to the conditions of para. 4 – as Art. 284(2) of Directive
+//   2006/112/EC requires for the exemption in a member state. OPEN: the administrative guidance on this.
+// - Para. 2: the amounts deducted from the taxable turnover are disjoint parts of it – a supply is deducted once.
+// - Para. 3 sentence 1: the taxable period is the calendar year (§ 16(1) sentence 2 UStG; OPEN: checked against its
+//   text), so the waiver for year Y can be declared until the last day of February of Y + 2. Whether § 108(3) AO
+//   moves that day when it falls on a weekend or public holiday: OPEN – holidays belong to a module of their own.
+// - Para. 5 sentences 2 and 3: "im letzten Monat eines Kalendervierteljahres" is March, June, September or December.
+//
+// Left out: the beginning of a business in the course of a year (not in § 19 itself).
+
+module de.ustg.p19 original de, en
+
+enum residence {
+  label de "Ansässigkeit"
+  label en "Place of establishment"
+  value domestic {
+    label de "im Inland oder in den in § 1 Abs. 3 bezeichneten Gebieten"
+    label en "in Germany or in the areas named in § 1(3)"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  value eu_other {
+    label de "im übrigen Gemeinschaftsgebiet"
+    label en "elsewhere in the European Union"
+    source "§ 19 Abs. 4 UStG"
+  }
+  value third_country {
+    label de "außerhalb des Gemeinschaftsgebiets"
+    label en "outside the European Union"
+  }
+}
+
+record turnover {
+  label de "Umsätze eines Kalenderjahres, nach vereinnahmten Entgelten"
+  label en "Supplies of a calendar year, by the consideration received"
+  source "§ 19 Abs. 2 UStG"
+  field taxable : money {
+    label de "steuerbare Umsätze im Sinne des § 1 Abs. 1 Nr. 1"
+    label en "taxable supplies within § 1(1) no. 1"
+    source "§ 19 Abs. 2 Satz 1 UStG"
+  }
+  field exempt_listed : money {
+    label de "darin: steuerfreie Umsätze nach § 4 Nr. 8 Buchst. i, Nr. 9 Buchst. b und Nr. 11 bis 29"
+    label en "of which: supplies exempt under § 4 no. 8(i), no. 9(b) and nos. 11 to 29"
+    source "§ 19 Abs. 2 Satz 1 Nr. 1 UStG"
+  }
+  field exempt_ancillary : money {
+    label de "darin: steuerfreie Hilfsumsätze nach § 4 Nr. 8 Buchst. a bis h, Nr. 9 Buchst. a und Nr. 10"
+    label en "of which: ancillary supplies exempt under § 4 no. 8(a) to (h), no. 9(a) and no. 10"
+    source "§ 19 Abs. 2 Satz 1 Nr. 2 UStG"
+  }
+  field fixed_assets : money {
+    label de "darin: übrige Umsätze mit Wirtschaftsgütern des Anlagevermögens"
+    label en "of which: other supplies of fixed assets"
+    source "§ 19 Abs. 2 Satz 2 UStG"
+  }
+}
+
+norm total_turnover {
+  label de "Gesamtumsatz"
+  label en "Total turnover"
+  source "§ 19 Abs. 2 UStG"
+  valid from 2025-01-01
+
+  input year : turnover {
+    label de "Umsätze des Kalenderjahres"
+    label en "supplies of the calendar year"
+  }
+
+  rule total : money = year.taxable - year.exempt_listed - year.exempt_ancillary - year.fixed_assets {
+    label de "Gesamtumsatz"
+    label en "total turnover"
+    source "§ 19 Abs. 2 UStG"
+  }
+}
+
+norm small_business {
+  label de "Besteuerung der Kleinunternehmer"
+  label en "Small business scheme"
+  source "§ 19 UStG in der ab 2025-01-01 geltenden Fassung"
+  valid from 2025-01-01
+
+  input established : residence {
+    label de "Ansässigkeit des Unternehmers"
+    label en "where the business is established"
+    source "§ 19 Abs. 1 Satz 1, Abs. 4 UStG"
+  }
+  input supply : bool {
+    label de "der Umsatz ist einer im Sinne des § 1 Abs. 1 Nr. 1"
+    label en "the supply is one within § 1(1) no. 1"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  input new_vehicle : bool {
+    label de "der Umsatz ist die innergemeinschaftliche Lieferung eines neuen Fahrzeugs"
+    label en "the supply is an intra-Community supply of a new vehicle"
+    source "§ 19 Abs. 6 UStG"
+  }
+  input prev : turnover {
+    label de "Umsätze im vorangegangenen Kalenderjahr"
+    label en "supplies in the previous calendar year"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  input curr : turnover {
+    label de "Umsätze im laufenden Kalenderjahr, einschließlich dieses Umsatzes"
+    label en "supplies in the current calendar year, including this supply"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  input eu_turnover_prev : money {
+    label de "Jahresumsatz im Gemeinschaftsgebiet (Art. 288 MwStSystRL) im vorangegangenen Kalenderjahr"
+    label en "annual turnover in the Union (Art. 288 of Directive 2006/112/EC) in the previous calendar year"
+    source "§ 19 Abs. 4 Nr. 1 UStG"
+  }
+  input eu_turnover_curr : money {
+    label de "Jahresumsatz im Gemeinschaftsgebiet (Art. 288 MwStSystRL) im laufenden Kalenderjahr"
+    label en "annual turnover in the Union (Art. 288 of Directive 2006/112/EC) in the current calendar year"
+    source "§ 19 Abs. 4 Nr. 1 UStG"
+  }
+  input eu_id : bool {
+    label de "Kleinunternehmer-Identifikationsnummer vom Mitgliedstaat der Ansässigkeit erteilt"
+    label en "small business identification number issued by the member state of establishment"
+    source "§ 19 Abs. 4 Nr. 2 UStG"
+  }
+  input waived : bool {
+    label de "Verzicht auf die Anwendung des Abs. 1 wirksam"
+    label en "waiver of para. 1 in effect"
+    source "§ 19 Abs. 3 UStG"
+  }
+  input waiver_year : int {
+    label de "Besteuerungszeitraum (Kalenderjahr), für den der Verzicht gelten soll"
+    label en "taxable period (calendar year) the waiver is to apply for"
+    source "§ 19 Abs. 3 Satz 1 und 2 UStG"
+  }
+  input waiver_declared : date {
+    label de "Tag, an dem der Verzicht dem Finanzamt erklärt wird"
+    label en "day the waiver is declared to the tax office"
+    source "§ 19 Abs. 3 Satz 1 UStG"
+  }
+  input waiver_years : int {
+    label de "Kalenderjahre, für die der Verzicht nach Abs. 3 schon gilt"
+    label en "calendar years the waiver under para. 3 has applied for"
+    source "§ 19 Abs. 3 Satz 3 UStG"
+  }
+  input eu_waived : bool {
+    label de "Verzicht auf die Anwendung des Abs. 4 wirksam"
+    label en "waiver of para. 4 in effect"
+    source "§ 19 Abs. 5 UStG"
+  }
+  input eu_waiver_received : date {
+    label de "Tag, an dem die Verzichtserklärung nach Abs. 5 eingeht"
+    label en "day the declaration of a waiver under para. 5 is received"
+    source "§ 19 Abs. 5 Satz 2 und 3 UStG"
+  }
+  input eu_waiver_years : int {
+    label de "Kalenderjahre, für die der Verzicht nach Abs. 5 schon gilt"
+    label en "calendar years the waiver under para. 5 has applied for"
+    source "§ 19 Abs. 5 Satz 4 UStG"
+  }
+
+  constant limit_prev : money = 25_000 EUR {
+    label de "Grenze für das vorangegangene Kalenderjahr"
+    label en "limit for the previous calendar year"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  constant limit_curr : money = 100_000 EUR {
+    label de "Grenze für das laufende Kalenderjahr"
+    label en "limit for the current calendar year"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+  constant eu_limit : money = 100_000 EUR {
+    label de "Grenze für den Jahresumsatz im Gemeinschaftsgebiet"
+    label en "limit for the annual turnover in the Union"
+    source "§ 19 Abs. 4 Nr. 1 UStG"
+  }
+  constant binding_years : int = 5 {
+    label de "Mindestbindung eines Verzichts in Kalenderjahren"
+    label en "minimum years a waiver binds"
+    source "§ 19 Abs. 3 Satz 3, Abs. 5 Satz 4 UStG"
+  }
+
+  rule turnover_prev : money = total_turnover.total(year = prev) {
+    label de "Gesamtumsatz im vorangegangenen Kalenderjahr"
+    label en "total turnover in the previous calendar year"
+    source "§ 19 Abs. 1 Satz 1, Abs. 2 UStG"
+  }
+  rule turnover_curr : money = total_turnover.total(year = curr) {
+    label de "Gesamtumsatz im laufenden Kalenderjahr"
+    label en "total turnover in the current calendar year"
+    source "§ 19 Abs. 1 Satz 1, Abs. 2 UStG"
+  }
+
+  rule within_limits : bool = turnover_prev <= limit_prev and turnover_curr <= limit_curr {
+    label de "Gesamtumsatz innerhalb der Grenzen"
+    label en "total turnover within the limits"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+  }
+
+  rule eu_conditions : bool = eu_turnover_prev <= eu_limit and eu_turnover_curr <= eu_limit and eu_id {
+    label de "Voraussetzungen für Unternehmer aus dem übrigen Gemeinschaftsgebiet"
+    label en "conditions for businesses from elsewhere in the Union"
+    source "§ 19 Abs. 4 UStG"
+  }
+
+  rule qualifies : bool {
+    label de "Unternehmer, für den Abs. 1 gilt"
+    label en "business to which para. 1 applies"
+    source "§ 19 Abs. 1 Satz 1, Abs. 4 UStG"
+    by established
+    domestic: within_limits
+    eu_other: within_limits and eu_conditions
+    third_country: false
+  }
+
+  rule exempt : bool {
+    label de "Umsatz steuerfrei"
+    label en "supply exempt"
+    source "§ 19 Abs. 1 Satz 1 UStG"
+    default supply and qualifies
+    unless new_vehicle then false {
+      source "§ 19 Abs. 6 Satz 1 UStG"
+    }
+    unless established == residence.domestic and waived then false {
+      source "§ 19 Abs. 3 UStG"
+    }
+    unless established == residence.eu_other and eu_waived then false {
+      source "§ 19 Abs. 5 UStG"
+    }
+  }
+
+  // Para. 1 sentence 2: what does not apply where sentence 1 does.
+  rule no_intra_eu_exemption : bool = exempt {
+    label de "keine Steuerbefreiung innergemeinschaftlicher Lieferungen (§ 4 Nr. 1 Buchst. b, § 6a)"
+    label en "no exemption of intra-Community supplies (§ 4 no. 1(b), § 6a)"
+    source "§ 19 Abs. 1 Satz 2 UStG"
+  }
+  rule no_option_to_tax : bool = exempt {
+    label de "kein Verzicht auf Steuerbefreiungen (§ 9)"
+    label en "no option to tax exempt supplies (§ 9)"
+    source "§ 19 Abs. 1 Satz 2 UStG"
+  }
+  rule no_vat_ids_on_invoice : bool = exempt {
+    label de "keine Angabe der Umsatzsteuer-Identifikationsnummern nach § 14a Abs. 1 Satz 3, Abs. 3 Satz 2, Abs. 7 Satz 2"
+    label en "no VAT identification numbers on the invoice under § 14a(1) sentence 3, (3) sentence 2, (7) sentence 2"
+    source "§ 19 Abs. 1 Satz 2 UStG"
+  }
+  rule no_returns : bool = exempt {
+    label de "keine Erklärungspflichten nach § 18 Abs. 1 bis 4 (§ 149 Abs. 1 Satz 2 AO und § 18 Abs. 4a bleiben unberührt)"
+    label en "no filing duties under § 18(1) to (4) (§ 149(1) sentence 2 of the Fiscal Code and § 18(4a) still apply)"
+    source "§ 19 Abs. 1 Satz 2 UStG"
+  }
+
+  // Para. 6 sentence 2: § 15(4a) applies to the supply of a new vehicle by a business that is otherwise exempt.
+  rule input_tax_new_vehicle : bool = new_vehicle and supply and qualifies {
+    label de "§ 15 Abs. 4a entsprechend anzuwenden"
+    label en "§ 15(4a) applies accordingly"
+    source "§ 19 Abs. 6 Satz 2 UStG"
+  }
+
+  // Para. 3: the waiver of para. 1.
+  rule waiver_deadline : date = last_day(waiver_year + 2, 2) {
+    label de "letzter Tag für die Erklärung des Verzichts"
+    label en "last day to declare the waiver"
+    source "§ 19 Abs. 3 Satz 1 UStG"
+  }
+  rule waiver_in_time : bool = waiver_declared <= waiver_deadline {
+    label de "Verzicht rechtzeitig erklärt"
+    label en "waiver declared in time"
+    source "§ 19 Abs. 3 Satz 1 UStG"
+  }
+  rule waiver_effective : date = date(waiver_year, 1, 1) {
+    label de "Verzicht wirksam ab"
+    label en "waiver effective from"
+    source "§ 19 Abs. 3 Satz 2 UStG"
+  }
+  permission waive {
+    label de "darf auf die Anwendung des Abs. 1 verzichten"
+    label en "may waive para. 1"
+    source "§ 19 Abs. 3 Satz 1 UStG"
+    when established == residence.domestic and within_limits and not waived and waiver_in_time
+  }
+  prohibition revoke_early {
+    label de "darf den Verzicht noch nicht widerrufen"
+    label en "must not revoke the waiver yet"
+    source "§ 19 Abs. 3 Satz 3 UStG"
+    when waived and waiver_years < binding_years
+  }
+  permission revoke {
+    label de "darf den Verzicht mit Wirkung von Beginn eines Kalenderjahres widerrufen"
+    label en "may revoke the waiver from the beginning of a calendar year"
+    source "§ 19 Abs. 3 Satz 4 UStG"
+    when waived and waiver_years >= binding_years
+  }
+
+  // Para. 5: the waiver of para. 4, declared in the member state of establishment.
+  rule eu_waiver_effective : date {
+    label de "Verzicht nach Abs. 5 wirksam ab"
+    label en "waiver under para. 5 effective from"
+    source "§ 19 Abs. 5 Satz 2 UStG"
+    default date(year(eu_waiver_received), 3 * quarter(eu_waiver_received) + 1, 1)
+    unless mod(month(eu_waiver_received), 3) == 0 then date(year(eu_waiver_received), month(eu_waiver_received) + 2, 1) {
+      source "§ 19 Abs. 5 Satz 3 UStG"
+    }
+  }
+  permission eu_waive {
+    label de "darf auf die Anwendung des Abs. 4 verzichten"
+    label en "may waive para. 4"
+    source "§ 19 Abs. 5 Satz 1 UStG"
+    when established == residence.eu_other and not eu_waived
+  }
+  prohibition eu_revoke_early {
+    label de "darf den Verzicht nach Abs. 5 noch nicht widerrufen"
+    label en "must not revoke the waiver under para. 5 yet"
+    source "§ 19 Abs. 5 Satz 4 UStG"
+    when eu_waived and eu_waiver_years < binding_years
+  }
+  permission eu_revoke {
+    label de "darf den Verzicht nach Abs. 5 mit Wirkung von Beginn eines Kalenderjahres widerrufen"
+    label en "may revoke the waiver under para. 5 from the beginning of a calendar year"
+    source "§ 19 Abs. 5 Satz 5 UStG"
+    when eu_waived and eu_waiver_years >= binding_years
+  }
+}
+
+theorem total_at_most_taxable {
+  label de "Der Gesamtumsatz ist nie höher als die steuerbaren Umsätze"
+  label en "The total turnover is never more than the taxable supplies"
+  params lean "(i : total_turnover.Inputs)"
+  statement lean "0 ≤ i.year.exempt_listed → 0 ≤ i.year.exempt_ancillary → 0 ≤ i.year.fixed_assets → total_turnover.total i ≤ i.year.taxable"
+  proof lean "by intro h1 h2 h3; simp only [total_turnover.total]; linarith"
+}
+
+theorem only_supplies {
+  label de "Steuerfrei nach § 19 sind nur Umsätze im Sinne des § 1 Abs. 1 Nr. 1"
+  label en "§ 19 exempts only supplies within § 1(1) no. 1"
+  params lean "(i : small_business.Inputs)"
+  statement lean "i.supply = false → small_business.exempt i = false"
+  proof lean "by intro h; simp [small_business.exempt, h]"
+}
+
+theorem new_vehicles_never {
+  label de "Die innergemeinschaftliche Lieferung eines neuen Fahrzeugs ist nie nach § 19 steuerfrei"
+  label en "An intra-Community supply of a new vehicle is never exempt under § 19"
+  params lean "(i : small_business.Inputs)"
+  statement lean "i.new_vehicle = true → small_business.exempt i = false"
+  proof lean "by intro h; simp [small_business.exempt, h]"
+}
+
+theorem third_country_never {
+  label de "Außerhalb des Gemeinschaftsgebiets ansässig: nie steuerfrei nach § 19"
+  label en "Established outside the Union: never exempt under § 19"
+  params lean "(i : small_business.Inputs)"
+  statement lean "i.established = residence.third_country → small_business.exempt i = false"
+  proof lean "by intro h; simp [small_business.exempt, small_business.qualifies, h]"
+}
+
+theorem waiver_excludes {
+  label de "Mit Verzicht keine Steuerfreiheit"
+  label en "A waiver ends the exemption"
+  params lean "(i : small_business.Inputs)"
+  statement lean "i.established = residence.domestic → i.waived = true → small_business.exempt i = false"
+  proof lean "by intro h1 h2; simp [small_business.exempt, h1, h2]"
+}
+
+theorem lower_turnover_keeps_exemption {
+  label de "Weniger Gesamtumsatz kostet die Steuerfreiheit nie"
+  label en "Lower total turnover never costs the exemption"
+  params lean "(i : small_business.Inputs) (p c : turnover)"
+  statement lean "total_turnover.total ⟨p⟩ ≤ small_business.turnover_prev i → total_turnover.total ⟨c⟩ ≤ small_business.turnover_curr i → small_business.exempt i = true → small_business.exempt { i with prev := p, curr := c } = true"
+  proof lean ```
+    by
+      intro hp hc h
+      have hw : small_business.within_limits i = true →
+          small_business.within_limits { i with prev := p, curr := c } = true := by
+        intro hwl
+        simp only [small_business.within_limits, small_business.turnover_prev, small_business.turnover_curr,
+          Bool.and_eq_true] at hwl hp hc ⊢
+        exact ⟨decide_eq_true (hp.trans (of_decide_eq_true hwl.1)),
+          decide_eq_true (hc.trans (of_decide_eq_true hwl.2))⟩
+      simp only [small_business.exempt, small_business.qualifies, small_business.eu_conditions] at h ⊢
+      revert h hw
+      generalize small_business.within_limits { i with prev := p, curr := c } = w'
+      generalize small_business.within_limits i = w
+      intro h hw
+      cases he : i.established <;> cases w <;> cases w' <;> simp_all
+  ```
+}
+
+theorem exempt_means_no_returns {
+  label de "Wer steuerfrei nach Abs. 1 ist, hat keine Erklärungspflichten nach § 18 Abs. 1 bis 4"
+  label en "Whoever is exempt under para. 1 has no filing duties under § 18(1) to (4)"
+  params lean "(i : small_business.Inputs)"
+  statement lean "small_business.exempt i = true → small_business.no_returns i = true"
+  proof lean "by intro h; simpa [small_business.no_returns] using h"
+}
+
+theorem revocation_consistent {
+  label de "Widerruf ist nie zugleich erlaubt und verboten – und nach einem Verzicht immer eines von beiden"
+  label en "Revocation is never both permitted and forbidden – and after a waiver always one of them"
+  params lean "(i : small_business.Inputs)"
+  statement lean "¬ (small_business.revoke i = true ∧ small_business.revoke_early i = true) ∧ (i.waived = true → small_business.revoke i = true ∨ small_business.revoke_early i = true)"
+  proof lean ```
+    by
+      simp only [small_business.revoke, small_business.revoke_early]
+      cases i.waived
+      · simp
+      · rcases le_or_gt small_business.binding_years i.waiver_years with h | h
+        · simp [h, not_lt.mpr h]
+        · simp [h, not_le.mpr h]
+  ```
+}
+
+theorem eu_revocation_consistent {
+  label de "Ebenso beim Verzicht nach Abs. 5"
+  label en "The same for the waiver under para. 5"
+  params lean "(i : small_business.Inputs)"
+  statement lean "¬ (small_business.eu_revoke i = true ∧ small_business.eu_revoke_early i = true) ∧ (i.eu_waived = true → small_business.eu_revoke i = true ∨ small_business.eu_revoke_early i = true)"
+  proof lean ```
+    by
+      simp only [small_business.eu_revoke, small_business.eu_revoke_early]
+      cases i.eu_waived
+      · simp
+      · rcases le_or_gt small_business.binding_years i.eu_waiver_years with h | h
+        · simp [h, not_lt.mpr h]
+        · simp [h, not_le.mpr h]
+  ```
+}
+
+example at_the_limits {
+  label de "Genau an den Grenzen: steuerfrei"
+  label en "Exactly at the limits: exempt"
+  statement lean "small_business.exempt { established := .domestic, supply := true, new_vehicle := false, prev := ⟨25000, 0, 0, 0⟩, curr := ⟨100000, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = true"
+  proof lean "by norm_num [small_business.exempt, small_business.qualifies, small_business.within_limits, small_business.turnover_prev, small_business.turnover_curr, total_turnover.total, small_business.limit_prev, small_business.limit_curr]"
+}
+
+example one_euro_over_this_year {
+  label de "Mit dem Umsatz, der 100.000 € überschreitet, endet die Steuerfreiheit"
+  label en "The supply that takes the year over 100,000 euros is no longer exempt"
+  statement lean "small_business.exempt { established := .domestic, supply := true, new_vehicle := false, prev := ⟨20000, 0, 0, 0⟩, curr := ⟨100001, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = false"
+  proof lean "by norm_num [small_business.exempt, small_business.qualifies, small_business.within_limits, small_business.turnover_prev, small_business.turnover_curr, total_turnover.total, small_business.limit_prev, small_business.limit_curr]"
+}
+
+example physician {
+  label de "Steuerfreie Heilbehandlungen (§ 4 Nr. 14) zählen nicht zum Gesamtumsatz: 90.000 € Umsatz, davon 80.000 € Heilbehandlungen – steuerfrei"
+  label en "Exempt medical care (§ 4 no. 14) is not part of the total turnover: 90,000 euros, 80,000 of them medical care – exempt"
+  statement lean "small_business.exempt { established := .domestic, supply := true, new_vehicle := false, prev := ⟨90000, 80000, 0, 0⟩, curr := ⟨90000, 80000, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = true"
+  proof lean "by norm_num [small_business.exempt, small_business.qualifies, small_business.within_limits, small_business.turnover_prev, small_business.turnover_curr, total_turnover.total, small_business.limit_prev, small_business.limit_curr]"
+}
+
+example eu_business_with_id {
+  label de "Unternehmer aus dem übrigen Gemeinschaftsgebiet mit Kleinunternehmer-Identifikationsnummer: steuerfrei"
+  label en "A business from elsewhere in the Union with a small business identification number: exempt"
+  statement lean "small_business.exempt { established := .eu_other, supply := true, new_vehicle := false, prev := ⟨10000, 0, 0, 0⟩, curr := ⟨12000, 0, 0, 0⟩, eu_turnover_prev := 80000, eu_turnover_curr := 60000, eu_id := true, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = true"
+  proof lean "by norm_num [small_business.exempt, small_business.qualifies, small_business.within_limits, small_business.eu_conditions, small_business.turnover_prev, small_business.turnover_curr, total_turnover.total, small_business.limit_prev, small_business.limit_curr, small_business.eu_limit]"
+}
+
+example eu_business_without_id {
+  label de "Dieselbe Lage ohne Kleinunternehmer-Identifikationsnummer: nicht steuerfrei"
+  label en "The same without a small business identification number: not exempt"
+  statement lean "small_business.exempt { established := .eu_other, supply := true, new_vehicle := false, prev := ⟨10000, 0, 0, 0⟩, curr := ⟨12000, 0, 0, 0⟩, eu_turnover_prev := 80000, eu_turnover_curr := 60000, eu_id := false, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = false"
+  proof lean "by norm_num [small_business.exempt, small_business.qualifies, small_business.within_limits, small_business.eu_conditions, small_business.turnover_prev, small_business.turnover_curr, total_turnover.total, small_business.limit_prev, small_business.limit_curr, small_business.eu_limit]"
+}
+
+example waiver_for_2025 {
+  label de "Verzicht für 2025: zu erklären bis zum 28.02.2027, wirksam ab dem 01.01.2025"
+  label en "Waiver for 2025: to be declared by 2027-02-28, effective from 2025-01-01"
+  statement lean "small_business.waiver_deadline { established := .domestic, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 2025, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = verkodo.day 2027 2 28 ∧ small_business.waiver_effective { established := .domestic, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 2025, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = verkodo.day 2025 1 1"
+  proof lean "by decide"
+}
+
+example waiver_for_2026_leap_year {
+  label de "Verzicht für 2026: bis zum 29.02.2028 – ein Schaltjahr"
+  label en "Waiver for 2026: by 2028-02-29 – a leap year"
+  statement lean "small_business.waiver_deadline { established := .domestic, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := false, waived := false, waiver_year := 2026, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := 0, eu_waiver_years := 0 } = verkodo.day 2028 2 29"
+  proof lean "by decide"
+}
+
+example eu_waiver_in_february {
+  label de "Verzicht nach Abs. 5, eingegangen am 10.02.2025: wirksam ab dem 01.04.2025"
+  label en "Waiver under para. 5 received on 2025-02-10: effective from 2025-04-01"
+  statement lean "small_business.eu_waiver_effective { established := .eu_other, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := true, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := verkodo.day 2025 2 10, eu_waiver_years := 0 } = verkodo.day 2025 4 1"
+  proof lean "by decide"
+}
+
+example eu_waiver_in_march {
+  label de "Eingegangen am 10.03.2025, im letzten Monat des Quartals: wirksam erst ab dem 01.05.2025"
+  label en "Received on 2025-03-10, in the last month of the quarter: effective only from 2025-05-01"
+  statement lean "small_business.eu_waiver_effective { established := .eu_other, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := true, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := verkodo.day 2025 3 10, eu_waiver_years := 0 } = verkodo.day 2025 5 1"
+  proof lean "by decide"
+}
+
+example eu_waiver_in_december {
+  label de "Eingegangen am 05.12.2025: wirksam ab dem 01.02.2026"
+  label en "Received on 2025-12-05: effective from 2026-02-01"
+  statement lean "small_business.eu_waiver_effective { established := .eu_other, supply := true, new_vehicle := false, prev := ⟨0, 0, 0, 0⟩, curr := ⟨0, 0, 0, 0⟩, eu_turnover_prev := 0, eu_turnover_curr := 0, eu_id := true, waived := false, waiver_year := 0, waiver_declared := 0, waiver_years := 0, eu_waived := false, eu_waiver_received := verkodo.day 2025 12 5, eu_waiver_years := 0 } = verkodo.day 2026 2 1"
+  proof lean "by decide"
+}
+
+path guide {
+  label de "Leitfaden: Bin ich Kleinunternehmer?"
+  label en "Guide: does the small business scheme apply to me?"
+  step small_business.supply
+  step residence
+  step small_business.established
+  step turnover
+  step total_turnover
+  step total_turnover.total
+  step total_at_most_taxable
+  step small_business.prev
+  step small_business.curr
+  step small_business.turnover_prev
+  step small_business.turnover_curr
+  step small_business.limit_prev
+  step small_business.limit_curr
+  step small_business.within_limits
+  step small_business.eu_limit
+  step small_business.eu_conditions
+  step small_business.qualifies
+  step small_business.exempt
+  step at_the_limits
+  step one_euro_over_this_year
+  step physician
+  step lower_turnover_keeps_exemption
+  step only_supplies
+  step new_vehicles_never
+  step third_country_never
+  step small_business.no_intra_eu_exemption
+  step small_business.no_option_to_tax
+  step small_business.no_vat_ids_on_invoice
+  step small_business.no_returns
+  step exempt_means_no_returns
+  step small_business.waiver_year
+  step small_business.waiver_deadline
+  step small_business.waiver_declared
+  step small_business.waiver_in_time
+  step small_business.waiver_effective
+  step waiver_for_2025
+  step waiver_for_2026_leap_year
+  step small_business.waive
+  step small_business.waived
+  step waiver_excludes
+  step small_business.binding_years
+  step small_business.waiver_years
+  step small_business.revoke_early
+  step small_business.revoke
+  step revocation_consistent
+}
+
+path eu_businesses {
+  label de "Kleinunternehmer aus dem übrigen Gemeinschaftsgebiet"
+  label en "Small businesses from elsewhere in the Union"
+  step residence
+  step small_business.established
+  step total_turnover.total
+  step small_business.turnover_prev
+  step small_business.turnover_curr
+  step small_business.limit_prev
+  step small_business.limit_curr
+  step small_business.within_limits
+  step small_business.eu_turnover_prev
+  step small_business.eu_turnover_curr
+  step small_business.eu_limit
+  step small_business.eu_id
+  step small_business.eu_conditions
+  step small_business.qualifies
+  step small_business.exempt
+  step eu_business_with_id
+  step eu_business_without_id
+  step small_business.eu_waive
+  step small_business.eu_waiver_received
+  step small_business.eu_waiver_effective
+  step eu_waiver_in_february
+  step eu_waiver_in_march
+  step eu_waiver_in_december
+  step small_business.eu_waived
+  step small_business.binding_years
+  step small_business.eu_waiver_years
+  step small_business.eu_revoke_early
+  step small_business.eu_revoke
+  step eu_revocation_consistent
+}

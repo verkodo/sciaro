@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Licence and copyright of the files in this repository (REUSE specification 3.3): the knowledge and the texts under
+# CC BY 4.0. Files with an SPDX header (.vk files, the workflow under MIT) keep it.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "falkOSS – Falcon Lake Open Source Software gUG (haftungsbeschränkt) i. G. and the verkodo contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

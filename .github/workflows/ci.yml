@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: MIT
+# The licence check (REUSE) and a sign-off (DCO) on every commit of a pull request – both from falkoss/starterpack,
+# pinned by commit – and verkodo's check of every .vk file, with verkodo built from the commit named below (a version
+# from crates.io once one knows every form used here).
+# Lean is not run here (Mathlib is too large for CI; OPEN). Actions are pinned by commit, with the version as a
+# comment.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  VERKODO_REPO: https://github.com/verkodo/verkodo
+  VERKODO_REV: 0b26916560f54b1762a2728ad822212d22ee8d13
+  RUST_VERSION: 1.99.1
+
+jobs:
+  licences:
+    uses: falkoss/starterpack/.github/workflows/reuse.yml@2c52b61993152e0f7f3828a628869f1aef62f0f3
+  sign-off:
+    uses: falkoss/starterpack/.github/workflows/dco.yml@2c52b61993152e0f7f3828a628869f1aef62f0f3
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # verkodo, built once per version and kept in the cache.
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/verkodo
+          key: verkodo-${{ env.VERKODO_REV }}-${{ runner.os }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: verkodo from its repository
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          cargo +"$RUST_VERSION" install verkodo --git "$VERKODO_REPO" --rev "$VERKODO_REV" --locked
+      - name: Parse, resolve and check every .vk file
+        run: verkodo check .
