@@ -28,12 +28,12 @@ European law follows in `eu/`.
 ## Check
 
 ```sh
-cargo install verkodo --git https://github.com/verkodo/verkodo   # Rust 1.99 or later; 0.2 on crates.io does not know every form used here
+cargo install verkodo     # 0.3 or later; Rust 1.99 or later
 verkodo check .           # parse, resolve and check every file
 ```
 
-Lean's check needs verkodo's Lean project (`lean/` in verkodo/verkodo, with Mathlib): `verkodo prove .` there.
-CI runs `verkodo check` with the commit of verkodo it names; Lean is not run in CI yet (**OPEN**).
+Lean checks with the Lean project in `lean/` (Mathlib, pinned like verkodo's): `lake exe cache get` there once, then
+`verkodo prove . --lean lean`. CI does both on every change, with the version of verkodo it names.
 
 ## Licence
 

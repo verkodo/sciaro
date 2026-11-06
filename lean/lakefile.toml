@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MIT
+# The Lean project sciaro is checked in: Mathlib, pinned like verkodo's own (`verkodo prove . --lean lean`).
+
+name = "sciaro"
+defaultTargets = []
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.35.0"

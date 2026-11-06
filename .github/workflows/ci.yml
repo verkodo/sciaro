@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: MIT
 # The licence check (REUSE) and a sign-off (DCO) on every commit of a pull request – both from falkoss/starterpack,
-# pinned by commit – and verkodo's check of every .vk file, with verkodo built from the commit named below (a version
-# from crates.io once one knows every form used here).
-# Lean is not run here (Mathlib is too large for CI; OPEN). Actions are pinned by commit, with the version as a
-# comment.
+# pinned by commit – verkodo's check of every .vk file, and Lean's: definitions, bridges, theorems and examples, with
+# Mathlib from its cache (lean/, pinned like verkodo's). verkodo comes from crates.io in the version named below.
+# Actions are pinned by commit, with the version as a comment.
 name: CI
 
 on:
@@ -16,8 +15,7 @@ permissions:
   contents: read
 
 env:
-  VERKODO_REPO: https://github.com/verkodo/verkodo
-  VERKODO_REV: 0b26916560f54b1762a2728ad822212d22ee8d13
+  VERKODO_VERSION: 0.3.0
   RUST_VERSION: 1.99.1
 
 jobs:
@@ -34,11 +32,32 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/verkodo
-          key: verkodo-${{ env.VERKODO_REV }}-${{ runner.os }}
+          key: verkodo-${{ env.VERKODO_VERSION }}-${{ runner.os }}
       - if: steps.cache.outputs.cache-hit != 'true'
-        name: verkodo from its repository
+        name: verkodo from crates.io
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
-          cargo +"$RUST_VERSION" install verkodo --git "$VERKODO_REPO" --rev "$VERKODO_REV" --locked
+          cargo +"$RUST_VERSION" install verkodo --version "$VERKODO_VERSION" --locked
       - name: Parse, resolve and check every .vk file
         run: verkodo check .
+  lean:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/verkodo
+          key: verkodo-${{ env.VERKODO_VERSION }}-${{ runner.os }}
+          fail-on-cache-miss: true
+      # Lean and Mathlib's build from its cache – nothing of sciaro is built by lake itself.
+      - uses: leanprover/lean-action@24581d74d674803a25a81b10b059c5c0cdd344c6 # v1.6.2
+        with:
+          lake-package-directory: lean
+          auto-config: false
+          build: false
+          test: false
+          lint: false
+          use-mathlib-cache: true
+      - name: Lean checks every .vk file
+        run: verkodo prove . --lean lean

@@ -23,6 +23,7 @@ sciaro – the body of knowledge written in verkodo: mathematics (`math/`) and G
 ## Checks
 
 ```sh
-verkodo check .                      # CI does this with the verkodo commit named in .github/workflows/ci.yml
-(cd ../verkodo && cargo run -q -- prove ../sciaro)   # Lean, with verkodo's Lean project
+verkodo check .                      # CI does this with the verkodo version named in .github/workflows/ci.yml
+(cd lean && lake exe cache get)      # once: Mathlib's build
+verkodo prove . --lean lean          # Lean – CI does this too
 ```
