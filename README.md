@@ -11,6 +11,7 @@ It is at its beginning. What is here is meant to be right, not to show the langu
 | [math/](math/) | mathematics, one folder per field |
 | [de/](de/) | German law, one folder per act; the law of a Land below its code (`de/bb/` for Brandenburg) |
 | [calendar/](calendar/) | what bodies of law count with: Easter Sunday |
+| [tests/](tests/) | results against official tables, through `verkodo eval` |
 
 European law follows in `eu/`.
 

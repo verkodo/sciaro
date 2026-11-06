@@ -61,3 +61,23 @@ jobs:
           use-mathlib-cache: true
       - name: Lean checks every .vk file
         run: verkodo prove . --lean lean
+  # Results against official tables (tests/*.py) need `verkodo eval`, which comes after 0.3.0: verkodo from this
+  # commit of its repository until the next version is on crates.io.
+  tables:
+    runs-on: ubuntu-latest
+    env:
+      VERKODO_REV: 428c262afb29af02f48c179bfb206b4468d2b89d
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cargo/bin/verkodo
+          key: verkodo-git-${{ env.VERKODO_REV }}-${{ runner.os }}
+      - if: steps.cache.outputs.cache-hit != 'true'
+        name: verkodo from its repository
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          cargo +"$RUST_VERSION" install verkodo --git https://github.com/verkodo/verkodo --rev "$VERKODO_REV" --locked
+      - name: The wage tax 2026 against the test tables of the BMF
+        run: python3 tests/lst_2026.py

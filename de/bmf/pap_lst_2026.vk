@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The wage tax for 2026 as the Federal Ministry of Finance computes it: the "Programmablaufplan für die maschinelle
+// Berechnung der vom Arbeitslohn einzubehaltenden Lohnsteuer … für 2026" (Anlage 1 to the BMF letter of
+// 2025-11-12, IV C 5 - S 2361/00025/016/028, Stand 12.11.2025 (endgültig); published under § 39b (6) and § 51 (4)
+// no. 1a EStG). Not tax advice.
+//
+// This file covers the annual computation (LZZ = 1) of the wage tax on current wages: the parameters (MPARA), the
+// annual wage (MRE4JL, MRE4ABZ), the fixed allowances (MZTABFB), the flat-rate deduction for provident expenses
+// (UPEVP, MVSPKVPV, MVSPHB), the taxable income and the tax (MLSTJAHR, UPMLST), tax classes V and VI (MST5-6,
+// UP5-6) and the scale (UPTAB26). Left out (OPEN): other pay periods, pensions (VBEZ, MRE4) and the relief for old
+// age (ALTER1), allowances and additions on the wage tax card (JLFREIB, JLHINZU), the factor method, other emoluments
+// (MSONST), the solidarity surcharge and the church tax base (MSOLZ, JBMG), double taxation treaties.
+//
+// The plan's own conventions are kept: a field with n decimal places drops further places (section 3), values marked
+// "Euro ↓" are rounded down, "Euro ↑" up to full euros. Every rule names the routine of the plan it comes from. The
+// two test tables of the plan (pages 39 and 40: 43 annual wages in six tax classes each) are checked against this
+// file with `verkodo eval` (tests/lst_2026.py).
+
+module de.bmf.pap_lst_2026 original de, en
+
+enum tax_class {
+  label de "Steuerklasse"
+  label en "Tax class"
+  source "STKL"
+  value i { label de "I" label en "I" }
+  value ii { label de "II" label en "II" }
+  value iii { label de "III" label en "III" }
+  value iv { label de "IV" label en "IV" }
+  value v { label de "V" label en "V" }
+  value vi { label de "VI" label en "VI" }
+}
+
+norm tariff {
+  label de "Tarifliche Einkommensteuer (UPTAB26)"
+  label en "Income tax under the scale (UPTAB26)"
+  source "PAP 2026, UPTAB26 (§ 32a EStG)"
+
+  input x : money {
+    label de "zu versteuerndes Einkommen (X)"
+    label en "taxable income (X)"
+  }
+
+  constant gfb : money = 12_348 EUR {
+    label de "Grundfreibetrag (GFB)"
+    label en "basic allowance (GFB)"
+    source "PAP 2026, MPARA"
+  }
+
+  rule y : decimal = round_down((x - gfb) / 10_000 EUR, 0.000001) {
+    label de "Y, mit 6 Nachkommastellen"
+    label en "Y, to 6 decimal places"
+  }
+  rule z : decimal = round_down((x - 17_799 EUR) / 10_000 EUR, 0.000001) {
+    label de "Y in der dritten Zone, mit 6 Nachkommastellen"
+    label en "Y in the third zone, to 6 decimal places"
+  }
+
+  rule st : money {
+    label de "tarifliche Einkommensteuer (ST, ohne KZTAB)"
+    label en "income tax under the scale (ST, before KZTAB)"
+    by x
+    up to 12_348 EUR: 0 EUR
+    up to 17_799 EUR: round_down((914.51 EUR * y + 1_400 EUR) * y, 1 EUR)
+    up to 69_878 EUR: round_down((173.1 EUR * z + 2_397 EUR) * z + 1_034.87 EUR, 1 EUR)
+    up to 277_825 EUR: round_down(0.42 * x - 11_135.63 EUR, 1 EUR)
+    otherwise: round_down(0.45 * x - 19_470.38 EUR, 1 EUR)
+  }
+}
+
+norm class_5_6_step {
+  label de "Steuer für die Steuerklassen V und VI an einer Stelle (UP5-6)"
+  label en "Tax for classes V and VI at one point (UP5-6)"
+  source "PAP 2026, UP5-6 (§ 39b Abs. 2 Satz 7 EStG)"
+
+  input zx : money {
+    label de "ZX"
+    label en "ZX"
+  }
+
+  rule st1 : money = tariff.st(x = round_down(zx * 1.25, 1 EUR)) {
+    label de "ST1: Steuer auf das 1,25-fache"
+    label en "ST1: tax on 1.25 times"
+  }
+  rule st2 : money = tariff.st(x = round_down(zx * 0.75, 1 EUR)) {
+    label de "ST2: Steuer auf das 0,75-fache"
+    label en "ST2: tax on 0.75 times"
+  }
+  rule diff : money = (st1 - st2) * 2 {
+    label de "DIFF: doppelter Unterschiedsbetrag"
+    label en "DIFF: twice the difference"
+  }
+  rule mist : money = round_down(zx * 0.14, 1 EUR) {
+    label de "MIST: Mindeststeuer"
+    label en "MIST: minimum tax"
+  }
+  rule st : money = if mist > diff then mist else diff {
+    label de "ST"
+    label en "ST"
+  }
+}
+
+norm wage_tax {
+  label de "Jahreslohnsteuer 2026 auf laufenden Arbeitslohn"
+  label en "Annual wage tax 2026 on current wages"
+  source "PAP 2026, Anlage 1 zum BMF-Schreiben vom 12.11.2025"
+  valid from 2026-01-01 to 2026-12-31
+
+  input stkl : tax_class {
+    label de "Steuerklasse (STKL)"
+    label en "tax class (STKL)"
+  }
+  input wage : money {
+    label de "Jahresarbeitslohn (RE4 bei LZZ = 1)"
+    label en "annual wage (RE4 with LZZ = 1)"
+  }
+  input krv : bool {
+    label de "nicht in der gesetzlichen Rentenversicherung pflichtversichert (KRV = 1)"
+    label en "not compulsorily insured in the statutory pension insurance (KRV = 1)"
+  }
+  input alv : bool {
+    label de "nicht in der Arbeitslosenversicherung pflichtversichert (ALV = 1)"
+    label en "not compulsorily insured against unemployment (ALV = 1)"
+  }
+  input pkv : bool {
+    label de "ausschließlich privat krankenversichert (PKV = 1)"
+    label en "only privately health-insured (PKV = 1)"
+  }
+  input kvz : decimal {
+    label de "kassenindividueller Zusatzbeitragssatz in Prozent (KVZ)"
+    label en "additional contribution rate of the health insurer, in percent (KVZ)"
+  }
+  input pvs : bool {
+    label de "Besonderheiten der Pflegeversicherung in Sachsen (PVS = 1)"
+    label en "the special rules of long-term care insurance in Saxony (PVS = 1)"
+  }
+  input pvz : bool {
+    label de "Zuschlag zur Pflegeversicherung für Kinderlose (PVZ = 1)"
+    label en "surcharge on long-term care insurance for the childless (PVZ = 1)"
+  }
+  input pva : int {
+    label de "Zahl der Beitragsabschläge für Kinder in der Pflegeversicherung (PVA, 0 bis 4)"
+    label en "number of reductions for children in long-term care insurance (PVA, 0 to 4)"
+  }
+  input pkpv : money {
+    label de "Beiträge zur privaten Basiskranken- und Pflege-Pflichtversicherung im Monat (PKPV)"
+    label en "monthly contributions to private basic health and long-term care insurance (PKPV)"
+  }
+  input pkpvagz : money {
+    label de "steuerfreier Arbeitgeberzuschuss dazu im Monat (PKPVAGZ)"
+    label en "tax-free employer subsidy to it per month (PKPVAGZ)"
+  }
+
+  // MPARA
+  constant bbgrvalv : money = 101_400 EUR {
+    label de "Beitragsbemessungsgrenze Renten- und Arbeitslosenversicherung (BBGRVALV)"
+    label en "contribution ceiling, pension and unemployment insurance (BBGRVALV)"
+    source "PAP 2026, MPARA"
+  }
+  constant avsatzan : decimal = 0.013 {
+    label de "Arbeitnehmeranteil Arbeitslosenversicherung (AVSATZAN)"
+    label en "employee's rate, unemployment insurance (AVSATZAN)"
+    source "PAP 2026, MPARA"
+  }
+  constant rvsatzan : decimal = 0.093 {
+    label de "Arbeitnehmeranteil Rentenversicherung (RVSATZAN)"
+    label en "employee's rate, pension insurance (RVSATZAN)"
+    source "PAP 2026, MPARA"
+  }
+  constant bbgkvpv : money = 69_750 EUR {
+    label de "Beitragsbemessungsgrenze Kranken- und Pflegeversicherung (BBGKVPV)"
+    label en "contribution ceiling, health and long-term care insurance (BBGKVPV)"
+    source "PAP 2026, MPARA"
+  }
+  constant w1stkl5 : money = 14_071 EUR {
+    label de "erster Grenzwert Steuerklasse V/VI (W1STKL5)"
+    label en "first threshold, classes V/VI (W1STKL5)"
+    source "PAP 2026, MPARA"
+  }
+  constant w2stkl5 : money = 34_939 EUR {
+    label de "zweiter Grenzwert Steuerklasse V/VI (W2STKL5)"
+    label en "second threshold, classes V/VI (W2STKL5)"
+    source "PAP 2026, MPARA"
+  }
+  constant w3stkl5 : money = 222_260 EUR {
+    label de "dritter Grenzwert Steuerklasse V/VI (W3STKL5)"
+    label en "third threshold, classes V/VI (W3STKL5)"
+    source "PAP 2026, MPARA"
+  }
+  rule kvsatzan : decimal = round_down(kvz / 2 / 100 + 0.07, 0.00001) {
+    label de "Arbeitnehmeranteil Krankenversicherung (KVSATZAN, 5 Nachkommastellen)"
+    label en "employee's rate, health insurance (KVSATZAN, 5 decimal places)"
+    source "PAP 2026, MPARA"
+  }
+  rule pvsatzan : decimal {
+    label de "Arbeitnehmeranteil Pflegeversicherung (PVSATZAN)"
+    label en "employee's rate, long-term care insurance (PVSATZAN)"
+    source "PAP 2026, MPARA"
+    default (if pvs then 0.023 else 0.018) - pva * 0.0025
+    unless pvz then (if pvs then 0.023 else 0.018) + 0.006
+  }
+
+  // MRE4JL, MRE4ABZ (without pensions, relief for old age, allowances and additions)
+  rule zre4 : money = max(wage, 0 EUR) {
+    label de "Jahresarbeitslohn nach Abzug der Freibeträge (ZRE4)"
+    label en "annual wage after allowances (ZRE4)"
+    source "PAP 2026, MRE4JL, MRE4ABZ"
+  }
+
+  // MZTABFB
+  rule anp : money {
+    label de "Arbeitnehmer-Pauschbetrag (ANP)"
+    label en "employee's lump sum (ANP)"
+    source "PAP 2026, MZTABFB (§ 9a Satz 1 Nr. 1 Buchst. a EStG)"
+    by stkl
+    vi: 0 EUR
+    otherwise: if zre4 > 0 EUR then min(round_up(zre4, 1 EUR), 1_230 EUR) else 0 EUR
+  }
+  rule efa : money {
+    label de "Entlastungsbetrag für Alleinerziehende (EFA)"
+    label en "relief for single parents (EFA)"
+    source "PAP 2026, MZTABFB (§ 24b EStG)"
+    by stkl
+    ii: 4_260 EUR
+    otherwise: 0 EUR
+  }
+  rule sap : money {
+    label de "Sonderausgaben-Pauschbetrag (SAP)"
+    label en "lump sum for special expenses (SAP)"
+    source "PAP 2026, MZTABFB (§ 10c EStG)"
+    by stkl
+    vi: 0 EUR
+    otherwise: 36 EUR
+  }
+  rule kztab : int {
+    label de "Tarifart (KZTAB): 1 Grundtarif, 2 Splittingverfahren"
+    label en "kind of scale (KZTAB): 1 basic, 2 splitting"
+    source "PAP 2026, MZTABFB"
+    by stkl
+    iii: 2
+    otherwise: 1
+  }
+  rule ztabfb : money = efa + anp + sap {
+    label de "feste Tabellenfreibeträge (ZTABFB)"
+    label en "fixed allowances of the tables (ZTABFB)"
+    source "PAP 2026, MZTABFB"
+  }
+
+  // UPEVP, MVSPKVPV, MVSPHB
+  rule vspr : money = if krv then 0 EUR else round_down(min(zre4, bbgrvalv) * rvsatzan, 0.01 EUR) {
+    label de "Teilbetrag Rentenversicherung (VSPR)"
+    label en "share for pension insurance (VSPR)"
+    source "PAP 2026, UPEVP"
+  }
+  rule vspkvpv : money {
+    label de "Teilbetrag Kranken- und Pflegeversicherung (VSPKVPV)"
+    label en "share for health and long-term care insurance (VSPKVPV)"
+    source "PAP 2026, MVSPKVPV"
+    default round_down(min(zre4, bbgkvpv) * (kvsatzan + pvsatzan), 0.01 EUR)
+    unless pkv and stkl == tax_class.vi then 0 EUR
+    unless pkv then max(round_down(pkpv * 12, 0.01 EUR) - round_down(pkpvagz * 12, 0.01 EUR), 0 EUR)
+  }
+  rule vsp_basic : money = round_up(vspkvpv + vspr, 1 EUR) {
+    label de "Vorsorgepauschale (VSP) vor der Höchstbetragsberechnung"
+    label en "provident lump sum (VSP) before the ceiling"
+    source "PAP 2026, MVSPKVPV"
+  }
+  rule vspalv : money = round_down(avsatzan * min(zre4, bbgrvalv), 0.01 EUR) {
+    label de "Teilbetrag Arbeitslosenversicherung (VSPALV)"
+    label en "share for unemployment insurance (VSPALV)"
+    source "PAP 2026, MVSPHB"
+  }
+  rule vsphb : money = min(vspalv + vspkvpv, 1_900 EUR) {
+    label de "auf den Höchstbetrag begrenzte Beiträge (VSPHB)"
+    label en "contributions up to the ceiling (VSPHB)"
+    source "PAP 2026, MVSPHB"
+  }
+  rule vspn : money = round_up(vspr + vsphb, 1 EUR) {
+    label de "Vorsorgepauschale mit Höchstbetrag (VSPN)"
+    label en "provident lump sum with the ceiling (VSPN)"
+    source "PAP 2026, MVSPHB"
+  }
+  rule vsp : money {
+    label de "Vorsorgepauschale (VSP)"
+    label en "provident lump sum (VSP)"
+    source "PAP 2026, UPEVP (§ 39b Abs. 2 Satz 5 Nr. 3 EStG)"
+    default if vspn > vsp_basic then vspn else vsp_basic
+    unless alv or stkl == tax_class.vi then vsp_basic
+  }
+
+  // MLSTJAHR, UPMLST
+  rule zve : money = zre4 - ztabfb - vsp {
+    label de "zu versteuerndes Einkommen (ZVE)"
+    label en "taxable income (ZVE)"
+    source "PAP 2026, MLSTJAHR"
+  }
+  rule x : money = if zve < 1 EUR then 0 EUR else round_down(zve / kztab, 1 EUR) {
+    label de "X: ZVE je Tarifart, auf volle Euro abgerundet"
+    label en "X: ZVE per kind of scale, rounded down to full euros"
+    source "PAP 2026, UPMLST"
+  }
+
+  // MST5-6
+  rule st_5_6 : money {
+    label de "Lohnsteuer in den Steuerklassen V und VI"
+    label en "wage tax in classes V and VI"
+    source "PAP 2026, MST5-6 (§ 39b Abs. 2 Satz 7 EStG)"
+    default if x > w1stkl5 then min(class_5_6_step.st(zx = x), round_down(class_5_6_step.st(zx = w1stkl5) + (x - w1stkl5) * 0.42, 1 EUR)) else class_5_6_step.st(zx = x)
+    unless x > w3stkl5 then class_5_6_step.st(zx = w2stkl5) + round_down((w3stkl5 - w2stkl5) * 0.42, 1 EUR) + round_down((x - w3stkl5) * 0.45, 1 EUR)
+    unless x > w2stkl5 then class_5_6_step.st(zx = w2stkl5) + round_down((x - w2stkl5) * 0.42, 1 EUR)
+  }
+
+  rule lstjahr : money {
+    label de "Jahreslohnsteuer (LSTJAHR)"
+    label en "annual wage tax (LSTJAHR)"
+    source "PAP 2026, MBERECH, UPMLST"
+    by stkl
+    v: st_5_6
+    vi: st_5_6
+    otherwise: tariff.st(x = x) * kztab
+  }
+}
+
+example general_class_i_40000 {
+  label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse I – 4.407 €"
+  label en "Test table, general wage tax: 40,000 euros, class I – 4,407 euros"
+  statement lean "wage_tax.lstjahr { stkl := .i, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 4407"
+  proof lean "by norm_num [wage_tax.lstjahr, wage_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+}
+
+example general_class_iii_40000 {
+  label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse III – 1.000 €"
+  label en "Test table, general wage tax: 40,000 euros, class III – 1,000 euros"
+  statement lean "wage_tax.lstjahr { stkl := .iii, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 1000"
+  proof lean "by norm_num [wage_tax.lstjahr, wage_tax.st_5_6, wage_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, wage_tax.w1stkl5, wage_tax.w2stkl5, wage_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+}
+
+example general_class_v_40000 {
+  label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse V – 8.720 €"
+  label en "Test table, general wage tax: 40,000 euros, class V – 8,720 euros"
+  statement lean "wage_tax.lstjahr { stkl := .v, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 8720"
+  proof lean "by norm_num [wage_tax.lstjahr, wage_tax.st_5_6, wage_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, wage_tax.w1stkl5, wage_tax.w2stkl5, wage_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+}
+
+example special_class_vi_110000 {
+  label de "Prüftabelle besondere Lohnsteuer: 110.000 €, Steuerklasse VI – 41.973 €"
+  label en "Test table, special wage tax: 110,000 euros, class VI – 41,973 euros"
+  statement lean "wage_tax.lstjahr { stkl := .vi, wage := 110000, krv := true, alv := true, pkv := true, kvz := 0, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 41973"
+  proof lean "by norm_num [wage_tax.lstjahr, wage_tax.st_5_6, wage_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, wage_tax.w1stkl5, wage_tax.w2stkl5, wage_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+}
