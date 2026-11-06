@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// § 108 (3) AO – the end of a period in tax law that falls on a Sunday, a public holiday or a Saturday moves to the
+// end of the next working day. Not legal or tax advice. Source: the official text at
+// https://www.gesetze-im-internet.de/ao_1977/__108.html (retrieved 2026-11-06). Para. 1 refers to §§ 187 to 193 BGB;
+// paras. 2, 4 to 6 are left out.
+//
+// Readings:
+// - "gesetzlicher Feiertag": a public holiday in the Land of the tax office the period is to be kept towards.
+//   OPEN: the case law and administrative guidance on which place counts.
+// - The next working day as in § 193 BGB (de.bgb.p193).
+
+module de.ao.p108 original de, en
+
+norm period_end {
+  label de "Ende einer Frist"
+  label en "End of a period"
+  source "§ 108 Abs. 3 AO"
+
+  input last : date {
+    label de "rechnerisches Ende der Frist"
+    label en "the end of the period as counted"
+  }
+  input place : de.states.state {
+    label de "Land des Finanzamts"
+    label en "Land of the tax office"
+  }
+  input holidays_given : list de.bgb.p193.holiday_date {
+    label de "gesetzliche Feiertage dort, wo sciaro sie nicht berechnet"
+    label en "public holidays there, where sciaro does not compute them"
+  }
+
+  rule effective : date = de.bgb.p193.deadline.effective(day = last, place = place, holidays_given = holidays_given) {
+    label de "Ende der Frist"
+    label en "end of the period"
+    source "§ 108 Abs. 3 AO"
+  }
+}
+
+example waiver_deadline_2026 {
+  label de "Verzicht nach § 19 Abs. 3 UStG für 2024: Fristende 28.02.2026 ist ein Samstag – in Brandenburg endet die Frist am Montag, 02.03.2026"
+  label en "Waiver under § 19(3) UStG for 2024: the period ends on Saturday 2026-02-28 – in Brandenburg it ends on Monday 2026-03-02"
+  statement lean "period_end.effective { last := verkodo.day 2026 2 28, place := .bb, holidays_given := [] } = verkodo.day 2026 3 2"
+  proof lean "by decide"
+}

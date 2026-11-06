@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// Easter Sunday in the Gregorian calendar – the day several public holidays are counted from.
+// The computation is the "anonymous Gregorian algorithm" (J. Meeus, Astronomical Algorithms, 1991, ch. 8, after
+// Jones 1876 and Butcher 1876). Checked on 2026-11-06 against Gauss's Easter formula with Lichtenberg's corrections,
+// computed independently: both give the same day for every year from 1583 to 2299. The examples below are checked by
+// Lean.
+
+module calendar.easter original de, en
+
+norm easter {
+  label de "Ostersonntag"
+  label en "Easter Sunday"
+  source "J. Meeus, Astronomical Algorithms (1991), Kap. 8"
+
+  input year : int {
+    label de "Jahr (gregorianischer Kalender, ab 1583)"
+    label en "year (Gregorian calendar, from 1583)"
+  }
+
+  rule a : int = mod(year, 19)
+  rule b : int = div(year, 100)
+  rule c : int = mod(year, 100)
+  rule h : int = mod(19 * a + b - div(b, 4) - div(b - div(b + 8, 25) + 1, 3) + 15, 30)
+  rule l : int = mod(32 + 2 * mod(b, 4) + 2 * div(c, 4) - h - mod(c, 4), 7)
+  rule m : int = div(a + 11 * h + 22 * l, 451)
+  rule n : int = h + l - 7 * m + 114
+
+  rule sunday : date = date(year, div(n, 31), mod(n, 31) + 1) {
+    label de "Ostersonntag"
+    label en "Easter Sunday"
+  }
+}
+
+example easter_2025 {
+  label de "Ostersonntag 2025: 20. April"
+  label en "Easter Sunday 2025: 20 April"
+  statement lean "easter.sunday { year := 2025 } = verkodo.day 2025 4 20"
+  proof lean "by decide"
+}
+
+example easter_2026 {
+  label de "Ostersonntag 2026: 5. April"
+  label en "Easter Sunday 2026: 5 April"
+  statement lean "easter.sunday { year := 2026 } = verkodo.day 2026 4 5"
+  proof lean "by decide"
+}
+
+example easter_2027 {
+  label de "Ostersonntag 2027: 28. März"
+  label en "Easter Sunday 2027: 28 March"
+  statement lean "easter.sunday { year := 2027 } = verkodo.day 2027 3 28"
+  proof lean "by decide"
+}
+
+example always_a_sunday {
+  label de "Ostersonntag ist ein Sonntag – 2024 bis 2030"
+  label en "Easter Sunday is a Sunday – 2024 to 2030"
+  statement lean "∀ y ∈ [2024, 2025, 2026, 2027, 2028, 2029, 2030], verkodo.weekday (easter.sunday { year := y }) = 7"
+  proof lean "by decide"
+}

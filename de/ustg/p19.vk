@@ -22,7 +22,7 @@
 // - Para. 2: the amounts deducted from the taxable turnover are disjoint parts of it – a supply is deducted once.
 // - Para. 3 sentence 1: the taxable period is the calendar year (§ 16(1) sentence 2 UStG; OPEN: checked against its
 //   text), so the waiver for year Y can be declared until the last day of February of Y + 2. Whether § 108(3) AO
-//   moves that day when it falls on a weekend or public holiday: OPEN – holidays belong to a module of their own.
+//   moves that day when it falls on a weekend or public holiday (de.ao.p108 computes it): OPEN.
 // - Para. 5 sentences 2 and 3: "im letzten Monat eines Kalendervierteljahres" is March, June, September or December.
 //
 // Left out: the beginning of a business in the course of a year (not in § 19 itself).

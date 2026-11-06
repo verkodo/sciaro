@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// § 193 BGB – Sunday, public holiday, Saturday: a day to act that falls on one moves to the next working day.
+// Not legal advice. Source: the official text at https://www.gesetze-im-internet.de/bgb/__193.html (retrieved
+// 2026-11-06).
+//
+// Whether a day is a public holiday depends on the Land of the place where the declaration is made or the
+// performance is due: for the Länder in sciaro it is computed (Brandenburg: de.bb.ftg.p2, with the Day of German
+// Unity of the Einigungsvertrag); for the others the holidays are given as an input until their acts are written.
+//
+// Readings:
+// - "der nächste Werktag": the next day that is neither a Sunday, a public holiday nor a Saturday – a Saturday is
+//   replaced itself, so it cannot be the day that replaces. OPEN: the case law on this.
+// - The next working day is looked for within a week: no more than six days in a row are Saturdays, Sundays or
+//   public holidays. OPEN: proved for every Land (examples below for Brandenburg).
+
+module de.bgb.p193 original de, en
+
+record holiday_date {
+  label de "gesetzlicher Feiertag"
+  label en "public holiday"
+  field on : date {
+    label de "Tag"
+    label en "day"
+  }
+}
+
+norm working_day {
+  label de "Werktag am Erklärungs- oder Leistungsort"
+  label en "Working day at the place of declaration or performance"
+  source "§ 193 BGB"
+
+  input on : date {
+    label de "Tag"
+    label en "day"
+  }
+  input place : de.states.state {
+    label de "Land des Erklärungs- oder Leistungsorts"
+    label en "Land of the place of declaration or performance"
+  }
+  input holidays_given : list holiday_date {
+    label de "gesetzliche Feiertage dort – für Länder, deren Feiertage sciaro noch nicht berechnet"
+    label en "public holidays there – for Länder whose holidays sciaro does not compute yet"
+  }
+
+  rule public_holiday : bool {
+    label de "staatlich anerkannter allgemeiner Feiertag am Ort"
+    label en "public holiday recognised by the state at the place"
+    source "§ 193 BGB"
+    by place
+    bb: de.bb.ftg.p2.holiday.is_holiday(on = on)
+    otherwise: de.einigvtr.a2.unity_day.holiday(on = on) or any(h.on == on for h in holidays_given)
+  }
+  rule working : bool = weekday(on) <= 5 and not public_holiday {
+    label de "Werktag – weder Sonnabend noch Sonntag noch Feiertag"
+    label en "working day – neither Saturday nor Sunday nor public holiday"
+    source "§ 193 BGB"
+  }
+}
+
+norm deadline {
+  label de "Tag zur Abgabe einer Willenserklärung oder Bewirkung einer Leistung"
+  label en "Day to make a declaration or to perform"
+  source "§ 193 BGB"
+
+  input day : date {
+    label de "bestimmter Tag oder letzter Tag der Frist"
+    label en "the day set, or the last day of the period"
+  }
+  input place : de.states.state {
+    label de "Land des Erklärungs- oder Leistungsorts"
+    label en "Land of the place of declaration or performance"
+  }
+  input holidays_given : list holiday_date {
+    label de "gesetzliche Feiertage dort, wo sciaro sie nicht berechnet"
+    label en "public holidays there, where sciaro does not compute them"
+  }
+
+  rule effective : date {
+    label de "maßgeblicher Tag"
+    label en "the day that counts"
+    source "§ 193 BGB"
+    default if working_day.working(on = day, place = place, holidays_given = holidays_given) then day
+      else if working_day.working(on = day + 1, place = place, holidays_given = holidays_given) then day + 1
+      else if working_day.working(on = day + 2, place = place, holidays_given = holidays_given) then day + 2
+      else if working_day.working(on = day + 3, place = place, holidays_given = holidays_given) then day + 3
+      else if working_day.working(on = day + 4, place = place, holidays_given = holidays_given) then day + 4
+      else if working_day.working(on = day + 5, place = place, holidays_given = holidays_given) then day + 5
+      else day + 6
+  }
+}
+
+example saturday_to_monday {
+  label de "Fristende Samstag, 7. November 2026, in Brandenburg: Montag, 9. November"
+  label en "A period ending on Saturday 7 November 2026 in Brandenburg: Monday 9 November"
+  statement lean "deadline.effective { day := verkodo.day 2026 11 7, place := .bb, holidays_given := [] } = verkodo.day 2026 11 9"
+  proof lean "by decide"
+}
+
+example easter_2026 {
+  label de "Fristende Karfreitag, 3. April 2026, in Brandenburg: Dienstag, 7. April"
+  label en "A period ending on Good Friday, 3 April 2026, in Brandenburg: Tuesday 7 April"
+  statement lean "deadline.effective { day := verkodo.day 2026 4 3, place := .bb, holidays_given := [] } = verkodo.day 2026 4 7"
+  proof lean "by decide"
+}
+
+example other_land_given {
+  label de "In einem anderen Land mit angegebenem Feiertag am Montag: Dienstag"
+  label en "In another Land with a public holiday given on the Monday: Tuesday"
+  statement lean "deadline.effective { day := verkodo.day 2026 11 7, place := .«by», holidays_given := [⟨verkodo.day 2026 11 9⟩] } = verkodo.day 2026 11 10"
+  proof lean "by decide"
+}

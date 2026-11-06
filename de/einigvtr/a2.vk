@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// Art. 2 (2) Einigungsvertrag – the Day of German Unity, the one public holiday set by federal law. Not legal advice.
+// Source: the official text at https://www.gesetze-im-internet.de/einigvtr/art_2.html (retrieved 2026-11-06).
+
+module de.einigvtr.a2 original de, en
+
+norm unity_day {
+  label de "Tag der Deutschen Einheit"
+  label en "Day of German Unity"
+  source "Art. 2 Abs. 2 Einigungsvertrag"
+
+  input on : date {
+    label de "Tag"
+    label en "day"
+  }
+
+  rule holiday : bool = month(on) == 10 and day(on) == 3 {
+    label de "gesetzlicher Feiertag (3. Oktober)"
+    label en "public holiday (3 October)"
+    source "Art. 2 Abs. 2 Einigungsvertrag"
+  }
+}
+
+example unity_day_2026 {
+  label de "Der 3. Oktober 2026 ist gesetzlicher Feiertag"
+  label en "3 October 2026 is a public holiday"
+  statement lean "unity_day.holiday { on := verkodo.day 2026 10 3 } = true"
+  proof lean "by decide"
+}

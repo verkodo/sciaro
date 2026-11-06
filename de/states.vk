@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The 16 Länder of the Federal Republic, as the preamble of the Basic Law names them
+// (https://www.gesetze-im-internet.de/gg/präambel.html); values by their ISO 3166-2:DE codes.
+
+module de.states original de, en
+
+enum state {
+  label de "Land"
+  label en "German state"
+  source "Präambel GG"
+  value bw { label de "Baden-Württemberg" label en "Baden-Württemberg" }
+  value by { label de "Bayern" label en "Bavaria" }
+  value be { label de "Berlin" label en "Berlin" }
+  value bb { label de "Brandenburg" label en "Brandenburg" }
+  value hb { label de "Bremen" label en "Bremen" }
+  value hh { label de "Hamburg" label en "Hamburg" }
+  value he { label de "Hessen" label en "Hesse" }
+  value mv { label de "Mecklenburg-Vorpommern" label en "Mecklenburg-Western Pomerania" }
+  value ni { label de "Niedersachsen" label en "Lower Saxony" }
+  value nw { label de "Nordrhein-Westfalen" label en "North Rhine-Westphalia" }
+  value rp { label de "Rheinland-Pfalz" label en "Rhineland-Palatinate" }
+  value sl { label de "Saarland" label en "Saarland" }
+  value sn { label de "Sachsen" label en "Saxony" }
+  value st { label de "Sachsen-Anhalt" label en "Saxony-Anhalt" }
+  value sh { label de "Schleswig-Holstein" label en "Schleswig-Holstein" }
+  value th { label de "Thüringen" label en "Thuringia" }
+}

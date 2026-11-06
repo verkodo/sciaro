@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// § 2 (1) Feiertagsgesetz Brandenburg (FTG) – the public holidays in Brandenburg. Not legal advice.
+// Source: the official text at https://bravors.brandenburg.de/gesetze/ftg_2015 (retrieved 2026-11-06): the act of
+// 21 March 1991 (GVBl. I/91, Nr. 06, S. 44), last amended by the act of 30 April 2015 (GVBl. I/15, Nr. 13).
+// Left out: para. 2 (days of remembrance – not holidays) and holidays declared once by ordinance under para. 3.
+// Easter Sunday is computed in calendar.easter; the days that depend on it are counted from it: Good Friday 2 days
+// before, Easter Monday 1, Ascension 39, Whit Sunday 49 and Whit Monday 50 days after.
+
+module de.bb.ftg.p2 original de, en
+
+norm holiday {
+  label de "Gesetzlich anerkannte Feiertage in Brandenburg"
+  label en "Public holidays in Brandenburg"
+  source "§ 2 Abs. 1 FTG Brandenburg"
+
+  input on : date {
+    label de "Tag"
+    label en "day"
+  }
+
+  rule easter : date = calendar.easter.easter.sunday(year = year(on)) {
+    label de "Ostersonntag des Jahres"
+    label en "Easter Sunday of the year"
+  }
+  rule after_easter : int = on - easter {
+    label de "Tage nach Ostersonntag"
+    label en "days after Easter Sunday"
+  }
+  rule fixed : bool = month(on) == 1 and day(on) == 1 or month(on) == 5 and day(on) == 1 or month(on) == 10 and day(on) == 3 or month(on) == 10 and day(on) == 31 or month(on) == 12 and day(on) == 25 or month(on) == 12 and day(on) == 26 {
+    label de "Neujahr, 1. Mai, Tag der deutschen Einheit, Reformationsfest, 1. und 2. Weihnachtsfeiertag"
+    label en "New Year's Day, 1 May, Day of German Unity, Reformation Day, Christmas Day and Boxing Day"
+    source "§ 2 Abs. 1 Nr. 1, 5, 9, 10, 11, 12 FTG Brandenburg"
+  }
+  rule moving : bool = after_easter == -2 or after_easter == 0 or after_easter == 1 or after_easter == 39 or after_easter == 49 or after_easter == 50 {
+    label de "Karfreitag, Ostersonntag, Ostermontag, Christi Himmelfahrt, Pfingstsonntag, Pfingstmontag"
+    label en "Good Friday, Easter Sunday, Easter Monday, Ascension Day, Whit Sunday, Whit Monday"
+    source "§ 2 Abs. 1 Nr. 2, 3, 4, 6, 7, 8 FTG Brandenburg"
+  }
+  rule is_holiday : bool = fixed or moving {
+    label de "gesetzlich anerkannter Feiertag"
+    label en "public holiday"
+    source "§ 2 Abs. 1 FTG Brandenburg"
+  }
+}
+
+example good_friday_2026 {
+  label de "Karfreitag 2026 (3. April) ist Feiertag"
+  label en "Good Friday 2026 (3 April) is a holiday"
+  statement lean "holiday.is_holiday { on := verkodo.day 2026 4 3 } = true"
+  proof lean "by decide"
+}
+
+example whit_sunday_2026 {
+  label de "Pfingstsonntag 2026 (24. Mai) ist in Brandenburg Feiertag"
+  label en "Whit Sunday 2026 (24 May) is a holiday in Brandenburg"
+  statement lean "holiday.is_holiday { on := verkodo.day 2026 5 24 } = true"
+  proof lean "by decide"
+}
+
+example reformation_day {
+  label de "Reformationsfest, 31. Oktober 2026"
+  label en "Reformation Day, 31 October 2026"
+  statement lean "holiday.is_holiday { on := verkodo.day 2026 10 31 } = true"
+  proof lean "by decide"
+}
+
+example not_whit_tuesday {
+  label de "Der Dienstag nach Pfingsten (26. Mai 2026) ist kein Feiertag"
+  label en "The Tuesday after Whitsun (26 May 2026) is no holiday"
+  statement lean "holiday.is_holiday { on := verkodo.day 2026 5 26 } = false"
+  proof lean "by decide"
+}
+
+example twelve_in_2026 {
+  label de "2026 hat Brandenburg zwölf gesetzliche Feiertage"
+  label en "In 2026 Brandenburg has twelve public holidays"
+  statement lean "((List.range 365).filter (fun k => holiday.is_holiday { on := verkodo.day 2026 1 1 + k })).length = 12"
+  proof lean "by decide"
+}
