@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: CC-BY-4.0
-"""The wage tax 2026 of de/bmf/pap_lst_2026.vk against the two test tables of the plan.
+"""The wage tax 2026 of de/bmf/pap_lst_2026.vk against the two test tables of the plan and the BMF's calculator.
 
 The tables are those of the "Programmablaufplan für die maschinelle Berechnung der vom Arbeitslohn einzubehaltenden
 Lohnsteuer … für 2026" (Anlage 1 to the BMF letter of 2025-11-12, IV C 5 - S 2361/00025/016/028), pages 39 and 40:
 the annual wage tax in euros for annual wages from 5,000 to 110,000 euros in tax classes I to VI – taken from the
-text of the PDF by a program, not typed. Run from the repository: python3 tests/lst_2026.py (needs `verkodo`).
+text of the PDF by a program, not typed. The plan has no tables for other pay periods, the solidarity surcharge or the
+church tax; for those, a few cases computed with the BMF's "Lohnsteuerrechner 2026" (bmf-steuerrechner.de, retrieved
+2026-11-13), which follows the plan. Run from the repository: python3 tests/lst_2026.py (needs `verkodo`).
 """
 import json
 import subprocess
@@ -111,31 +113,64 @@ SPECIAL = [
 ]
 
 
+# The BMF's "Lohnsteuerrechner 2026" (bmf-steuerrechner.de, retrieved 2026-11-13): ALV, KRV and PKV = 0, KVZ = 2.90,
+# no pensions, allowances or additions. Church tax with 8 % (Bavaria); the calculator shows the church tax, not its
+# base, so the test compares 8 % of BK, rounded down to cents. Rows: pay period, wage, class, ZKF, church, PVZ, PVA,
+# then the wage tax, solidarity surcharge and church tax for the pay period in euros.
+CALCULATOR = [
+    ("month", "4000", "i", "1", True, False, 0, "531.83", "0", "23.65"),
+    ("week", "1500", "iii", "2", True, False, 1, "173.48", "0", "5.74"),
+    ("day", "300", "i", "0", False, True, 0, "73.75", "2.05", "0"),
+    ("month", "9000", "iv", "1.5", True, False, 0, "2227.41", "32.77", "157.7"),
+    ("month", "3000", "v", "0", True, True, 0, "625.66", "0", "50.05"),
+]
+
+
+def cents(x):
+    return round(float(x) * 100)
+
+
 def cases():
+    """(name, inputs, check): check takes the outputs of `verkodo eval` and says what differs."""
     for wage, *taxes in GENERAL:
         for c, tax in zip(CLASSES, taxes):
-            inputs = dict(stkl=c, wage=str(wage), krv="false", alv="false", pkv="false", kvz="2.90", pvs="false",
-                          pvz="false" if c == "ii" else "true", pva="0", pkpv="0", pkpvagz="0")
-            yield ("general", wage, c, tax), inputs
+            inputs = dict(stkl=c, lzz="year", wage=str(wage), zkf="0", r="false", krv="false", alv="false",
+                          pkv="false", kvz="2.90", pvs="false", pvz="false" if c == "ii" else "true", pva="0",
+                          pkpv="0", pkpvagz="0")
+            yield f"general {wage} class {c.upper()}", inputs, {"lstjahr": tax}
     for wage, *taxes in SPECIAL:
         for c, tax in zip(CLASSES, taxes):
             pkpv = {"iii": "500", "vi": "0"}.get(c, "300")
-            inputs = dict(stkl=c, wage=str(wage), krv="true", alv="true", pkv="true", kvz="0", pvs="false",
-                          pvz="true", pva="0", pkpv=pkpv, pkpvagz="0")
-            yield ("special", wage, c, tax), inputs
+            inputs = dict(stkl=c, lzz="year", wage=str(wage), zkf="0", r="false", krv="true", alv="true",
+                          pkv="true", kvz="0", pvs="false", pvz="true", pva="0", pkpv=pkpv, pkpvagz="0")
+            yield f"special {wage} class {c.upper()}", inputs, {"lstjahr": tax}
+    for lzz, wage, c, zkf, church, pvz, pva, lst, solz, kist in CALCULATOR:
+        inputs = dict(stkl=c, lzz=lzz, wage=wage, zkf=zkf, r=str(church).lower(), krv="false", alv="false",
+                      pkv="false", kvz="2.90", pvs="false", pvz=str(pvz).lower(), pva=str(pva), pkpv="0",
+                      pkpvagz="0")
+        yield f"calculator {lzz} {wage} class {c.upper()}", inputs, {"lstlzz": lst, "solzlzz": solz, "kist": kist}
+
+
+def got(out, key):
+    if key == "kist":  # 8 % of BK, rounded down to cents
+        return cents(out["bk"]) * 8 // 100
+    return cents(out[key])
 
 
 def main():
-    expected, inputs = zip(*cases())
+    names, inputs, expected = zip(*cases())
     with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
         f.write("".join(json.dumps(i) + "\n" for i in inputs))
     out = subprocess.run(["verkodo", "eval", ".", "--norm", NORM, "--cases", f.name],
                          capture_output=True, text=True, check=True).stdout.splitlines()
-    got = [json.loads(o)["lstjahr"] for o in out]
-    wrong = [(e, g) for e, g in zip(expected, got) if g != str(e[3])]
-    for (table, wage, c, tax), g in wrong:
-        print(f"{table} {wage} class {c.upper()}: expected {tax}, got {g}")
-    print(f"{len(expected) - len(wrong)} of {len(expected)} as in the test tables")
+    wrong = []
+    for name, exp, o in zip(names, expected, out):
+        o = json.loads(o)
+        for key, value in exp.items():
+            if got(o, key) != cents(value):
+                wrong.append(f"{name}: {key} expected {value}, got {got(o, key) / 100}")
+    print("\n".join(wrong) if wrong else "", end="\n" if wrong else "")
+    print(f"{len(names) - len({w.split(':')[0] for w in wrong})} of {len(names)} as in the test tables and the calculator")
     sys.exit(1 if wrong else 0)
 
 
