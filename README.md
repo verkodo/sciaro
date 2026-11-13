@@ -30,7 +30,7 @@ European law follows in `eu/`.
 ## Check
 
 ```sh
-cargo install verkodo     # 0.3 or later; Rust 1.99 or later
+cargo install verkodo     # 0.4 or later; Rust 1.99 or later
 verkodo check .           # parse, resolve and check every file
 ```
 
