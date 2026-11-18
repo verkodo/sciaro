@@ -198,7 +198,8 @@ def edge_case():
 def to_vk(c):
     g = lambda k: c.get(k, 0)
     e = lambda k: str(Decimal(g(k)) / 100)
-    return dict(stkl=["i", "ii", "iii", "iv", "v", "vi"][c["STKL"] - 1], lzz=["year", "month", "week", "day"][c["LZZ"] - 1],
+    return dict(stkl=["i", "ii", "iii", "iv", "v", "vi"][c["STKL"] - 1],
+                lzz=["year", "month", "week", "day"][c["LZZ"] - 1],
                 wage=e("RE4"), zkf=c["ZKF"], r=str(bool(c["R"])).lower(),
                 ins=dict(krv=bool(c["KRV"]), alv=bool(c["ALV"]), pkv=bool(c["PKV"]), kvz=c["KVZ"], pvs=bool(c["PVS"]),
                          pvz=bool(c["PVZ"]), pva=c["PVA"], pkpv=e("PKPV"), pkpvagz=e("PKPVAGZ")),

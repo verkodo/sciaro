@@ -2,8 +2,9 @@
 //
 // The wage tax tables for 2026: the "Programmablaufplan für die Erstellung von Lohnsteuertabellen für 2026 zur
 // manuellen Berechnung der Lohnsteuer (einschließlich der Berechnung des Solidaritätszuschlags und der
-// Bemessungsgrundlage für die Kirchenlohnsteuer)" (Anlage 2 to the BMF letter of 2025-11-12, IV C 5 - S 2361/00025/016/028,
-// Stand 12.11.2025 (endgültig, korrigierte Fassung); published under § 51 (4) no. 1a EStG). Not tax advice.
+// Bemessungsgrundlage für die Kirchenlohnsteuer)" (Anlage 2 to the BMF letter of 2025-11-12,
+// IV C 5 - S 2361/00025/016/028, Stand 12.11.2025 (endgültig, korrigierte Fassung); published under § 51 (4) no. 1a
+// EStG). Not tax advice.
 //
 // A table has steps of 36 euros of annual wage; each entry is computed at the top of its step (ZRE4O = ZRE4 + 35.99)
 // and shown for the pay period with the bounds of the step (UPANTEIL2). Unlike the machine computation (Anlage 1, in

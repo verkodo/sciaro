@@ -13,12 +13,12 @@
 // here in euros with cents. The plan's test table (page 14: 43 annual pensions, classes I and VI, three treaties) is
 // checked with `verkodo eval` (tests/lst_2026.py).
 //
-// The flowchart was read from the rendered pages (the text of the PDF loses its layout): in UMVFRB the test
-// "DBAFREIB – WVFRBO > 0" belongs to the branch DBAFREIB < WVFRBM and does nothing when it fails; in MMAXST every "Nein"
-// ends the reduction (the excess is taken from SOLZS, then SOLZLZZ, then STS, then LSTLZZ). STDBA drops fractions of a
-// cent (section 3 of Anlage 1, which applies here too); the plan marks no rounding there. The test table agrees, but it
-// has neither other payments nor allowances, so those paths are checked only by reading (OPEN: no machine-readable
-// version of this plan was found).
+// The flowchart was read from the rendered pages (the text of the PDF loses its layout): in UMVFRB the test "DBAFREIB –
+// WVFRBO > 0" belongs to the branch DBAFREIB < WVFRBM and does nothing when it fails; in MMAXST every "Nein" ends the
+// reduction (the excess is taken from SOLZS, then SOLZLZZ, then STS, then LSTLZZ). STDBA drops fractions of a cent
+// (section 3 of Anlage 1, which applies here too); the plan marks no rounding there. The test table agrees, but it has
+// neither other payments nor allowances, so those paths are checked only by reading (OPEN: no machine-readable version
+// of this plan was found).
 
 module de.bmf.pap_lst_dba_2026 original de, en
 

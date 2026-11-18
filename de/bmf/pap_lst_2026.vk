@@ -25,9 +25,11 @@
 // the wage, the factor only in class IV and without allowances, no additions in class VI).
 //
 // Checked with `verkodo eval` (tests/lst_2026.py): the two test tables of the plan (pages 39 and 40: 43 annual wages
-// in six tax classes each); five cases of the BMF's calculator (bmf-steuerrechner.de, retrieved 2026-11-13) for other
-// pay periods, the solidarity surcharge and the church tax base; and 600 cases over every input, computed by running
-// the machine-readable plan itself (tests/pap_xml.py, tests/lst_2026_pap.jsonl). Seven of them are Lean examples below.
+// in six tax classes each); nine cases of the BMF's calculator (bmf-steuerrechner.de, retrieved 2026-11-13 and
+// 2026-11-18) for other pay periods, the solidarity surcharge, the church tax base, a pension with the relief for old
+// age, an allowance, an addition and the factor method; and 600 cases over every input, computed by running the
+// machine-readable plan itself (tests/pap_xml.py, tests/lst_2026_pap.jsonl). The calculator has no other emoluments;
+// those are checked against the machine-readable plan only. Seven cases are Lean examples below.
 
 module de.bmf.pap_lst_2026 original de, en
 

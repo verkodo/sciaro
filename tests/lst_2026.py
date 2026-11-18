@@ -121,10 +121,10 @@ SPECIAL = [
     (110000, 33020, 31231, 22062, 33020, 39929, 41973),
 ]
 
-# "Allgemeine" and "Besondere Jahreslohnsteuertabelle 2026 (Prüftabelle)" of the plan for the wage tax tables (Anlage 2,
-# pages 21 and 22): for 43 steps of 36 euros, the annual wage tax in tax classes I to VI, computed at the top of the step
-# (lower bound + 35.99 euros). General: MALVKRVPKV = 0, KVZ = 2.90; special: MALVKRVPKV = 1. Rows: the lower bound of the
-# step, then the tax in classes I to VI.
+# "Allgemeine" and "Besondere Jahreslohnsteuertabelle 2026 (Prüftabelle)" of the plan for the wage tax tables
+# (Anlage 2, pages 21 and 22): for 43 steps of 36 euros, the annual wage tax in tax classes I to VI, computed at the
+# top of the step (lower bound + 35.99 euros). General: MALVKRVPKV = 0, KVZ = 2.90; special: MALVKRVPKV = 1. Rows: the
+# lower bound of the step, then the tax in classes I to VI.
 TABLE_GENERAL = [
     (4968, 0, 0, 0, 0, 377, 563),
     (7488, 0, 0, 0, 0, 656, 847),
@@ -282,6 +282,22 @@ CALCULATOR = [
 ]
 
 
+# More cases of the same calculator (retrieved 2026-11-18) for the parts it offers beyond the plain wage: a pension
+# with the relief for old age (the calculator asks the year of birth: 1960 gives ALTER1 = 1, AJAHR = 2025), an
+# allowance and an addition on the wage tax card, and the factor method. ALV, KRV and PKV = 0, KVZ = 2.90. Rows: the
+# inputs that differ from a plain wage, the church tax rate of the Land in percent (Bavaria 8, Berlin 9), then wage
+# tax, solidarity surcharge and church tax for the pay period in euros.
+CALCULATOR_MORE = [
+    (dict(stkl="i", lzz="month", wage="3000", zkf="0", r="true", pvz=False, pva=0, vbez="1500", vbezm="1500",
+          vjahr="2026", zmvb="12", alter1="true", ajahr="2025"), 8, "253.41", "0", "20.27"),
+    (dict(stkl="iii", lzz="month", wage="4000", zkf="0", r="true", pvz=False, pva=1, lzzfreib="300"),
+     8, "139.00", "0", "11.12"),
+    (dict(stkl="i", lzz="year", wage="30000", zkf="1", r="false", pvz=True, pva=0, lzzhinzu="2000"),
+     0, "2768.00", "0", "0"),
+    (dict(stkl="iv", lzz="week", wage="900", zkf="1", r="true", pvz=False, pva=0, af="true", f="0.912"),
+     9, "105.71", "0", "7.22"),
+]
+
 # Inputs the tables and the calculator leave at zero.
 NONE = dict(af="false", f="1", lzzfreib="0", lzzhinzu="0", vbez="0", vbezm="0", vbezs="0", vjahr="0", zmvb="0",
             alter1="false", ajahr="0", sonstb="0", sonstent="0", sterbe="0", vbs="0", mbv="0", jre4="0", jre4ent="0",
@@ -318,6 +334,13 @@ def cases():
         yield (f"calculator {lzz} {wage} class {c.upper()}",
                plain(c, lzz, wage, zkf, church, False, False, False, "2.90", pvz, pva, "0"),
                {"lstlzz": lst, "solzlzz": solz, "kist": kist}, NORM)
+    for more, rate, lst, solz, kist in CALCULATOR_MORE:
+        more = dict(more)
+        ins = dict(krv=False, alv=False, pkv=False, kvz="2.90", pvs=False, pvz=more.pop("pvz"), pva=more.pop("pva"),
+                   pkpv="0", pkpvagz="0")
+        extra = sorted(set(more) - {"stkl", "lzz", "wage", "zkf", "r"})
+        yield (f"calculator {more['lzz']} {more['wage']} class {more['stkl'].upper()} with {', '.join(extra)}",
+               dict(NONE, ins=ins, **more), {"lstlzz": lst, "solzlzz": solz, f"kist{rate}": kist}, NORM)
     for special, table in (("false", TABLE_GENERAL), ("true", TABLE_SPECIAL)):
         for low, *taxes in table:
             for c, tax in zip(CLASSES, taxes):
@@ -328,9 +351,10 @@ def cases():
     for pension, *taxes in DBA:
         for (land, c), tax in zip(TREATIES, taxes):
             ins = dict(krv=True, alv=False, pkv=False, kvz="2.90", pvs=False, pvz=True, pva=0, pkpv="0", pkpvagz="0")
-            inputs = dict(land=land, stkl=c, lzz="year", ins=ins, vbez=str(pension), vbezm=str(cents_down(pension / 12)),
-                          vbezs="0", vjahr="2026", zmvb="12", vbs="0", sterbe="0", sonstent="0", jvbez="0", jre4ent="0",
-                          jfreib="0", jhinzu="0", lzzfreib="0", lzzhinzu="0")
+            inputs = dict(land=land, stkl=c, lzz="year", ins=ins, vbez=str(pension),
+                          vbezm=str(cents_down(pension / 12)), vbezs="0", vjahr="2026", zmvb="12", vbs="0",
+                          sterbe="0", sonstent="0", jvbez="0", jre4ent="0", jfreib="0", jhinzu="0", lzzfreib="0",
+                          lzzhinzu="0")
             yield f"treaty {pension} {land} class {c.upper()}", inputs, {"lstlzz": tax}, DBA_NORM
     for n, line in enumerate(PAP.read_text().splitlines(), start=1):
         case = json.loads(line)
@@ -338,8 +362,9 @@ def cases():
 
 
 def got(out, key):
-    if key == "kist":  # 8 % of BK, rounded down to cents
-        return cents(out["bk"]) * 8 // 100
+    if key.startswith("kist"):  # church tax: the rate in percent (8 unless given) of BK, rounded down to cents
+        rate = int(key[4:] or 8)
+        return cents(out["bk"]) * rate // 100
     return cents(out[key])
 
 
