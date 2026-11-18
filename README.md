@@ -1,6 +1,8 @@
 # sciaro
 
 **Knowledge written formally, checked by machine** – mathematics and law in [verkodo](https://github.com/verkodo/verkodo).
+Read it at **[sciaro.verkodo.org](https://sciaro.verkodo.org/)** – articles, paths to work through, search, a calculator
+for every norm.
 *Sciaro* is Esperanto for a body of knowledge: what a person, a group or a society knows about a subject.
 
 It is at its beginning. What is here is meant to be right, not to show the language – small samples of that are in
@@ -30,8 +32,9 @@ European law follows in `eu/`.
 ## Check
 
 ```sh
-cargo install verkodo     # 0.4 or later; Rust 1.99 or later
+cargo install verkodo     # 0.5 or later; Rust 1.99 or later
 verkodo check .           # parse, resolve and check every file
+verkodo render . -o _site --title sciaro   # the site, as at sciaro.verkodo.org (add --prove --lean lean for Lean's verdict)
 ```
 
 Lean checks with the Lean project in `lean/` (Mathlib, pinned like verkodo's): `lake exe cache get` there once, then
