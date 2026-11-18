@@ -1,0 +1,271 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The wage tax tables for 2026: the "Programmablaufplan für die Erstellung von Lohnsteuertabellen für 2026 zur
+// manuellen Berechnung der Lohnsteuer (einschließlich der Berechnung des Solidaritätszuschlags und der
+// Bemessungsgrundlage für die Kirchenlohnsteuer)" (Anlage 2 to the BMF letter of 2025-11-12, IV C 5 - S 2361/00025/016/028,
+// Stand 12.11.2025 (endgültig, korrigierte Fassung); published under § 51 (4) no. 1a EStG). Not tax advice.
+//
+// A table has steps of 36 euros of annual wage; each entry is computed at the top of its step (ZRE4O = ZRE4 + 35.99)
+// and shown for the pay period with the bounds of the step (UPANTEIL2). Unlike the machine computation (Anlage 1, in
+// de.bmf.pap_lst_2026, whose scale, classes V and VI and shares are used here), the tables leave out the surcharge for
+// the childless and the reductions for children in long-term care insurance, take the average additional contribution
+// rate (section 2.4), give the employee's lump sum in full, and know only "general" (insured in every branch) and
+// "special" (in none) wage tax (MALVKRVPKV). The wage tax does not depend on the allowances for children; they change
+// only the base of the solidarity surcharge and the church tax (BERECH). Amounts the plan keeps in cents are written
+// here in euros with cents. The rounding marks (↓, ↑) of the flowcharts are drawn, not text; they were read from the
+// rendered pages. The two test tables of the plan (pages 21 and 22: 43 annual steps in six tax classes each) are
+// checked with `verkodo eval` (tests/lst_2026.py).
+//
+// Read where the plan is not explicit: BERECH sets "JW = BVSP" while BVSP is in euros and JW in cents elsewhere; the
+// output BVSP is read as the share of the annual amount in euros, as for the other outputs (OPEN).
+
+module de.bmf.pap_lst_tab_2026 original de, en
+
+norm table_entry {
+  label de "Eintrag der Lohnsteuertabelle 2026 für eine Tabellenstufe"
+  label en "Entry of the wage tax table 2026 for one step"
+  source "PAP Lohnsteuertabellen 2026, Anlage 2 zum BMF-Schreiben vom 12.11.2025"
+  valid from 2026-01-01 to 2026-12-31
+
+  input special : bool {
+    label de "besondere Lohnsteuertabelle (MALVKRVPKV = 1), sonst allgemeine"
+    label en "special wage tax table (MALVKRVPKV = 1), otherwise general"
+  }
+  input kvz : decimal {
+    label de "Zusatzbeitragssatz in Prozent (KVZ; nach Abschnitt 2.4 der durchschnittliche)"
+    label en "additional contribution rate in percent (KVZ; the average one under section 2.4)"
+  }
+  input pvs : bool {
+    label de "Pflegeversicherung in Sachsen (PVS = 1)"
+    label en "long-term care insurance in Saxony (PVS = 1)"
+  }
+  input lzz : de.bmf.pap_lst_2026.pay_period {
+    label de "Lohnzahlungszeitraum der Tabelle (LZZ)"
+    label en "pay period of the table (LZZ)"
+  }
+  input stkl : de.bmf.pap_lst_2026.tax_class {
+    label de "Steuerklasse (STKL)"
+    label en "tax class (STKL)"
+  }
+  input zkf : decimal {
+    label de "Zahl der Freibeträge für Kinder (ZKF, in Schritten von 0,5)"
+    label en "number of allowances for children (ZKF, in steps of 0.5)"
+  }
+  input zre4 : money {
+    label de "Jahresarbeitslohn am Beginn der Tabellenstufe (ZRE4, ein Vielfaches von 36 €)"
+    label en "annual wage at the start of the step (ZRE4, a multiple of 36 euros)"
+  }
+
+  // MPARA
+  constant bbgrvalv : money = 101_400 EUR {
+    label de "Beitragsbemessungsgrenze Renten- und Arbeitslosenversicherung (BBGRVALV)"
+    label en "contribution ceiling, pension and unemployment insurance (BBGRVALV)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  constant rvsatzan : decimal = 0.093 {
+    label de "Arbeitnehmeranteil Rentenversicherung (RVSATZAN)"
+    label en "employee's rate, pension insurance (RVSATZAN)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  constant alvsatzan : decimal = 0.013 {
+    label de "Arbeitnehmeranteil Arbeitslosenversicherung (ALVSATZAN)"
+    label en "employee's rate, unemployment insurance (ALVSATZAN)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  constant bbgkvpv : money = 69_750 EUR {
+    label de "Beitragsbemessungsgrenze Kranken- und Pflegeversicherung (BBGKVPV)"
+    label en "contribution ceiling, health and long-term care insurance (BBGKVPV)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  constant solzfrei : money = 20_350 EUR {
+    label de "Freigrenze Solidaritätszuschlag (SOLZFREI)"
+    label en "exemption limit, solidarity surcharge (SOLZFREI)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  rule kvsatzan : decimal = round_down(kvz / 2 / 100 + 0.07, 0.00001) {
+    label de "Arbeitnehmeranteil Krankenversicherung (KVSATZAN, 5 Nachkommastellen)"
+    label en "employee's rate, health insurance (KVSATZAN, 5 decimal places)"
+    source "PAP Lohnsteuertabellen 2026, MPARA"
+  }
+  rule pvsatzan : decimal = if pvs then 0.023 else 0.018 {
+    label de "Arbeitnehmeranteil Pflegeversicherung, ohne Zuschlag und Abschläge (PVSATZAN)"
+    label en "employee's rate, long-term care insurance, without surcharge and reductions (PVSATZAN)"
+    source "PAP Lohnsteuertabellen 2026, MPARA, Abschnitt 2.4"
+  }
+
+  // PAPTAB2026, UPANTEIL2
+  rule zre4o : money = zre4 + 35.99 EUR {
+    label de "maßgeblicher Jahresarbeitslohn: Obergrenze der Stufe (ZRE4O)"
+    label en "annual wage used: the top of the step (ZRE4O)"
+    source "PAP Lohnsteuertabellen 2026, PAPTAB2026"
+  }
+  rule lzalug : money {
+    label de "Untergrenze der Tabellenstufe im Lohnzahlungszeitraum (LZALUG)"
+    label en "lower bound of the step in the pay period (LZALUG)"
+    source "PAP Lohnsteuertabellen 2026, UPANTEIL2"
+    by lzz
+    year: zre4
+    month: round_down(zre4 / 12, 0.01 EUR)
+    week: round_down(zre4 * 7 / 360, 0.01 EUR)
+    otherwise: round_down(zre4 / 360, 0.01 EUR)
+  }
+  rule lzalog : money {
+    label de "Obergrenze der Tabellenstufe im Lohnzahlungszeitraum (LZALOG)"
+    label en "upper bound of the step in the pay period (LZALOG)"
+    source "PAP Lohnsteuertabellen 2026, UPANTEIL2"
+    by lzz
+    year: lzalug + 35.99 EUR
+    month: lzalug + 2.99 EUR
+    week: lzalug + 0.69 EUR
+    otherwise: lzalug + 0.09 EUR
+  }
+
+  // MZTABFB
+  rule kztab : int {
+    label de "Tarifart (KZTAB)"
+    label en "kind of scale (KZTAB)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB"
+    by stkl
+    iii: 2
+    otherwise: 1
+  }
+  rule efa : money {
+    label de "Entlastungsbetrag für Alleinerziehende (EFA)"
+    label en "relief for single parents (EFA)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB (§ 24b EStG)"
+    by stkl
+    ii: 4_260 EUR
+    otherwise: 0 EUR
+  }
+  rule anp : money {
+    label de "Arbeitnehmer-Pauschbetrag (ANP)"
+    label en "employee's lump sum (ANP)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB (§ 9a Satz 1 Nr. 1 Buchst. a EStG)"
+    by stkl
+    vi: 0 EUR
+    otherwise: 1_230 EUR
+  }
+  rule sap : money {
+    label de "Sonderausgaben-Pauschbetrag (SAP)"
+    label en "lump sum for special expenses (SAP)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB (§ 10c EStG)"
+    by stkl
+    vi: 0 EUR
+    otherwise: 36 EUR
+  }
+  rule kfb : money {
+    label de "Summe der Freibeträge für Kinder (KFB)"
+    label en "sum of the allowances for children (KFB)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB"
+    by stkl
+    iv: zkf * 4_878 EUR
+    v: 0 EUR
+    vi: 0 EUR
+    otherwise: zkf * 9_756 EUR
+  }
+  rule ztabfb : money = efa + anp + sap {
+    label de "feste Tabellenfreibeträge (ZTABFB)"
+    label en "fixed allowances of the tables (ZTABFB)"
+    source "PAP Lohnsteuertabellen 2026, MZTABFB"
+  }
+
+  // UPEVP, MVSPHB
+  rule vspr : money = round_down(min(zre4o, bbgrvalv) * rvsatzan, 0.01 EUR) {
+    label de "Teilbetrag Rentenversicherung (VSPR)"
+    label en "share for pension insurance (VSPR)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP"
+  }
+  rule vspalv : money = round_down(alvsatzan * min(zre4o, bbgrvalv), 0.01 EUR) {
+    label de "Teilbetrag Arbeitslosenversicherung (VSPALV)"
+    label en "share for unemployment insurance (VSPALV)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP"
+  }
+  rule vspkvpv : money = round_down(min(zre4o, bbgkvpv) * (kvsatzan + pvsatzan), 0.01 EUR) {
+    label de "Teilbetrag Kranken- und Pflegeversicherung (VSPKVPV)"
+    label en "share for health and long-term care insurance (VSPKVPV)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP"
+  }
+  rule bvsp_year : money = if special then 0 EUR else round_down(vspkvpv, 1 EUR) {
+    label de "berücksichtigter Teil der Vorsorgepauschale für Kranken- und Pflegeversicherung im Jahr (BVSP)"
+    label en "part of the provident lump sum for health and long-term care insurance, per year (BVSP)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP"
+  }
+  rule vsp_basic : money = round_up(vspkvpv + vspr, 1 EUR) {
+    label de "Vorsorgepauschale vor der Höchstbetragsberechnung (VSP)"
+    label en "provident lump sum before the ceiling (VSP)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP"
+  }
+  rule vspn : money = round_up(vspr + min(vspalv + vspkvpv, 1_900 EUR), 1 EUR) {
+    label de "Vorsorgepauschale mit Höchstbetrag (VSPN)"
+    label en "provident lump sum with the ceiling (VSPN)"
+    source "PAP Lohnsteuertabellen 2026, MVSPHB"
+  }
+  rule vsp : money {
+    label de "Vorsorgepauschale (VSP)"
+    label en "provident lump sum (VSP)"
+    source "PAP Lohnsteuertabellen 2026, UPEVP (§ 39b Abs. 2 Satz 5 Nr. 3 EStG)"
+    default max(vspn, vsp_basic)
+    unless special then 0 EUR
+    unless stkl == de.bmf.pap_lst_2026.tax_class.vi then vsp_basic
+  }
+
+  // MLSTJAHR, BERECH
+  rule zve : money = round_down(zre4o - ztabfb - vsp, 1 EUR) {
+    label de "zu versteuerndes Einkommen (ZVE, in Euro)"
+    label en "taxable income (ZVE, in euros)"
+    source "PAP Lohnsteuertabellen 2026, MLSTJAHR"
+  }
+  rule lstjahr : money = de.bmf.pap_lst_2026.annual_tax.st(stkl = stkl, kztab = kztab, zve = zve) {
+    label de "Jahreslohnsteuer (LSTJAHR)"
+    label en "annual wage tax (LSTJAHR)"
+    source "PAP Lohnsteuertabellen 2026, BERECH, UPMLST"
+  }
+  rule lstlzz : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = lstjahr) {
+    label de "Lohnsteuer im Lohnzahlungszeitraum (LSTLZZ)"
+    label en "wage tax in the pay period (LSTLZZ)"
+    source "PAP Lohnsteuertabellen 2026, BERECH, UPANTEIL"
+  }
+  rule bvsp : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = bvsp_year) {
+    label de "berücksichtigter Teil der Vorsorgepauschale für Kranken- und Pflegeversicherung im Lohnzahlungszeitraum (BVSP)"
+    label en "part of the provident lump sum for health and long-term care insurance in the pay period (BVSP)"
+    source "PAP Lohnsteuertabellen 2026, BERECH"
+  }
+  rule jbmg : money = de.bmf.pap_lst_2026.annual_tax.st(stkl = stkl, kztab = kztab, zve = zve - kfb) {
+    label de "Jahressteuer nach § 51a EStG (JBMG)"
+    label en "annual tax under § 51a EStG (JBMG)"
+    source "PAP Lohnsteuertabellen 2026, BERECH (§ 51a EStG)"
+  }
+
+  // MSOLZ
+  rule solzj : money = if jbmg > solzfrei * kztab then min(round_down(jbmg * 0.055, 0.01 EUR), round_down((jbmg - solzfrei * kztab) * 0.119, 0.01 EUR)) else 0 EUR {
+    label de "Solidaritätszuschlag auf die Jahreslohnsteuer (SOLZJ)"
+    label en "solidarity surcharge on the annual wage tax (SOLZJ)"
+    source "PAP Lohnsteuertabellen 2026, MSOLZ"
+  }
+  rule solzlzz : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = solzj) {
+    label de "Solidaritätszuschlag im Lohnzahlungszeitraum (SOLZLZZ)"
+    label en "solidarity surcharge in the pay period (SOLZLZZ)"
+    source "PAP Lohnsteuertabellen 2026, MSOLZ"
+  }
+  rule bk : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = jbmg) {
+    label de "Bemessungsgrundlage der Kirchenlohnsteuer (BK)"
+    label en "base of the church wage tax (BK)"
+    source "PAP Lohnsteuertabellen 2026, MSOLZ (§ 51a EStG)"
+  }
+}
+
+example example_1_private_insurance {
+  label de "Beispiel 1 aus Abschnitt 2.4: 75.000 €, Steuerklasse III – Lohnsteuer 8.330 €, darin Kranken- und Pflegeversicherung 7.149 €; bei 76.149 € Lohnsteuer 8.624 €"
+  label en "Example 1 of section 2.4: 75,000 euros, class III – wage tax 8,330 euros, with 7,149 euros for health and long-term care insurance; at 76,149 euros, wage tax 8,624 euros"
+  source "PAP Lohnsteuertabellen 2026, Abschnitt 2.4, Beispiel 1"
+  statement lean "table_entry.lstlzz { special := false, kvz := 29 / 10, pvs := false, lzz := .year, stkl := .iii, zkf := 0, zre4 := 74988 } = 8330 ∧ table_entry.bvsp { special := false, kvz := 29 / 10, pvs := false, lzz := .year, stkl := .iii, zkf := 0, zre4 := 74988 } = 7149 ∧ table_entry.lstlzz { special := false, kvz := 29 / 10, pvs := false, lzz := .year, stkl := .iii, zkf := 0, zre4 := 76140 } = 8624"
+  proof lean "by norm_num [table_entry.bbgrvalv, table_entry.rvsatzan, table_entry.alvsatzan, table_entry.bbgkvpv, table_entry.solzfrei, table_entry.kvsatzan, table_entry.pvsatzan, table_entry.zre4o, table_entry.lzalug, table_entry.lzalog, table_entry.kztab, table_entry.efa, table_entry.anp, table_entry.sap, table_entry.kfb, table_entry.ztabfb, table_entry.vspr, table_entry.vspalv, table_entry.vspkvpv, table_entry.bvsp_year, table_entry.vsp_basic, table_entry.vspn, table_entry.vsp, table_entry.zve, table_entry.lstjahr, table_entry.lstlzz, table_entry.bvsp, table_entry.jbmg, table_entry.solzj, table_entry.solzlzz, table_entry.bk, de.bmf.pap_lst_2026.tariff.gfb, de.bmf.pap_lst_2026.tariff.y, de.bmf.pap_lst_2026.tariff.z, de.bmf.pap_lst_2026.tariff.st, de.bmf.pap_lst_2026.class_5_6_step.st1, de.bmf.pap_lst_2026.class_5_6_step.st2, de.bmf.pap_lst_2026.class_5_6_step.diff, de.bmf.pap_lst_2026.class_5_6_step.mist, de.bmf.pap_lst_2026.class_5_6_step.st, de.bmf.pap_lst_2026.annual_tax.w1stkl5, de.bmf.pap_lst_2026.annual_tax.w2stkl5, de.bmf.pap_lst_2026.annual_tax.w3stkl5, de.bmf.pap_lst_2026.annual_tax.x, de.bmf.pap_lst_2026.annual_tax.st_5_6, de.bmf.pap_lst_2026.annual_tax.st, de.bmf.pap_lst_2026.share.anteil1, verkodo.round_down, verkodo.round_up]"
+}
+
+example example_2_civil_servant {
+  label de "Beispiel 2 aus Abschnitt 2.4: Beamter, 17.500 €, Steuerklasse I, besondere Tabelle – 688 €; bei 15.100 € 231 €"
+  label en "Example 2 of section 2.4: civil servant, 17,500 euros, class I, special table – 688 euros; at 15,100 euros, 231 euros"
+  source "PAP Lohnsteuertabellen 2026, Abschnitt 2.4, Beispiel 2"
+  statement lean "table_entry.lstlzz { special := true, kvz := 29 / 10, pvs := false, lzz := .year, stkl := .i, zkf := 0, zre4 := 17496 } = 688 ∧ table_entry.lstlzz { special := true, kvz := 29 / 10, pvs := false, lzz := .year, stkl := .i, zkf := 0, zre4 := 15084 } = 231"
+  proof lean "by norm_num [table_entry.bbgrvalv, table_entry.rvsatzan, table_entry.alvsatzan, table_entry.bbgkvpv, table_entry.solzfrei, table_entry.kvsatzan, table_entry.pvsatzan, table_entry.zre4o, table_entry.lzalug, table_entry.lzalog, table_entry.kztab, table_entry.efa, table_entry.anp, table_entry.sap, table_entry.kfb, table_entry.ztabfb, table_entry.vspr, table_entry.vspalv, table_entry.vspkvpv, table_entry.bvsp_year, table_entry.vsp_basic, table_entry.vspn, table_entry.vsp, table_entry.zve, table_entry.lstjahr, table_entry.lstlzz, table_entry.bvsp, table_entry.jbmg, table_entry.solzj, table_entry.solzlzz, table_entry.bk, de.bmf.pap_lst_2026.tariff.gfb, de.bmf.pap_lst_2026.tariff.y, de.bmf.pap_lst_2026.tariff.z, de.bmf.pap_lst_2026.tariff.st, de.bmf.pap_lst_2026.class_5_6_step.st1, de.bmf.pap_lst_2026.class_5_6_step.st2, de.bmf.pap_lst_2026.class_5_6_step.diff, de.bmf.pap_lst_2026.class_5_6_step.mist, de.bmf.pap_lst_2026.class_5_6_step.st, de.bmf.pap_lst_2026.annual_tax.w1stkl5, de.bmf.pap_lst_2026.annual_tax.w2stkl5, de.bmf.pap_lst_2026.annual_tax.w3stkl5, de.bmf.pap_lst_2026.annual_tax.x, de.bmf.pap_lst_2026.annual_tax.st_5_6, de.bmf.pap_lst_2026.annual_tax.st, de.bmf.pap_lst_2026.share.anteil1, verkodo.round_down, verkodo.round_up]"
+}

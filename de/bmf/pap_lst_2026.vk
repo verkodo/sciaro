@@ -5,21 +5,29 @@
 // 2025-11-12, IV C 5 - S 2361/00025/016/028, Stand 12.11.2025 (endgültig); published under § 39b (6) and § 51 (4)
 // no. 1a EStG). Not tax advice.
 //
-// This file covers the wage tax on current wages for every pay period (MBERECH): the parameters (MPARA), the wage
-// projected to a year (MRE4JL, MRE4ABZ), the fixed allowances and those for children (MZTABFB), the flat-rate deduction
-// for provident expenses (UPEVP, MVSPKVPV, MVSPHB), the taxable income and the tax (MLSTJAHR, UPMLST), tax classes V
-// and VI (MST5-6, UP5-6), the scale (UPTAB26), the share of the pay period (UPLSTLZZ, UPANTEIL), the solidarity
-// surcharge and the church tax base (MSOLZ, JBMG). Left out (OPEN): pensions (VBEZ, MRE4) and the relief for old age
-// (ALTER1), allowances and additions on the wage tax card (LZZFREIB, LZZHINZU), the factor method (F = 1 here), other
-// emoluments (MSONST), double taxation treaties.
+// This file covers the whole plan: the parameters (MPARA); the wage, pensions, allowances and additions projected to a
+// year (MRE4JL); the allowances for pensions and the relief for old age with their tables (MRE4, MRE4ALTE, TAB1 to
+// TAB5); the wage after them (MRE4ABZ); the fixed allowances and those for children (MZTABFB); the provident lump sum
+// (UPEVP, MVSPKVPV, MVSPHB); the taxable income and the tax (MLSTJAHR, UPMLST), tax classes V and VI (MST5-6, UP5-6),
+// the scale (UPTAB26); the factor method (F); the share of the pay period (UPLSTLZZ, UPANTEIL); the solidarity
+// surcharge and the church tax base (MBERECH, MSOLZ); other emoluments as the difference of the annual tax with and
+// without them (MSONST, MOSONST, MRE4SONST, STSMIN, MSOLZSTS); and the outputs for the plan on double taxation treaties
+// (VFRB, WVFRB and their variants; that plan is de.bmf.pap_lst_dba_2026). Where the plan runs one routine several times
+// on changed fields, a norm here takes those fields as inputs: annual_wage_tax is MRE4ABZ to UPMLST for one annual
+// wage, called for the current wage, without and with the other emoluments.
 //
 // The plan's own conventions are kept: a field with n decimal places drops further places (section 3), values marked
-// "Euro ↓" are rounded down, "Euro ↑" up to full euros; fields without decimal places are whole numbers. Amounts the
-// plan keeps in cents (RE4, LSTLZZ, SOLZLZZ, BK) are written here in euros with cents. Every rule names the routine of
-// the plan it comes from. The two test tables of the plan (pages 39 and 40: 43 annual wages in six tax classes each)
-// are checked against this file with `verkodo eval` (tests/lst_2026.py). The plan has no tables for other pay
-// periods, the solidarity surcharge or the church tax base: five cases of the BMF's calculator (bmf-steuerrechner.de,
-// retrieved 2026-11-13) stand in for them in the same test, one of them as a Lean example below.
+// "Euro ↓" are rounded down, "Euro ↑" up to full euros; fields without decimal places are whole numbers. The marks are
+// drawn in the PDF, not text; they agree with the BMF's machine-readable version of the plan (Lohnsteuer2026.xml,
+// "Stand: 2025-10-23 12:40", bmf-steuerrechner.de, retrieved 2026-11-18), which gives every rounding in Java. Amounts
+// the plan keeps in cents (RE4, LSTLZZ, SOLZLZZ, BK, …) are written here in euros with cents. Every rule names the
+// routine of the plan it comes from. Inputs are assumed plausible as section 3.1 asks of the caller (pensions within
+// the wage, the factor only in class IV and without allowances, no additions in class VI).
+//
+// Checked with `verkodo eval` (tests/lst_2026.py): the two test tables of the plan (pages 39 and 40: 43 annual wages
+// in six tax classes each); five cases of the BMF's calculator (bmf-steuerrechner.de, retrieved 2026-11-13) for other
+// pay periods, the solidarity surcharge and the church tax base; and 600 cases over every input, computed by running
+// the machine-readable plan itself (tests/pap_xml.py, tests/lst_2026_pap.jsonl). Seven of them are Lean examples below.
 
 module de.bmf.pap_lst_2026 original de, en
 
@@ -199,67 +207,565 @@ norm share {
   }
 }
 
-norm wage_tax {
-  label de "Jahreslohnsteuer 2026 auf laufenden Arbeitslohn"
-  label en "Annual wage tax 2026 on current wages"
-  source "PAP 2026, Anlage 1 zum BMF-Schreiben vom 12.11.2025"
-  valid from 2026-01-01 to 2026-12-31
+norm projection {
+  label de "Hochrechnung eines Betrags des Lohnzahlungszeitraums auf ein Jahr (MRE4JL)"
+  label en "Projection of an amount for the pay period to a year (MRE4JL)"
+  source "PAP 2026, MRE4JL (§ 39b Abs. 2 Satz 2 und 9 EStG)"
+
+  input lzz : pay_period {
+    label de "Lohnzahlungszeitraum (LZZ)"
+    label en "pay period (LZZ)"
+  }
+  input amount : money {
+    label de "Betrag für den Lohnzahlungszeitraum"
+    label en "amount for the pay period"
+  }
+
+  rule year : money {
+    label de "Jahresbetrag, mit 2 Nachkommastellen"
+    label en "annual amount, to 2 decimal places"
+    by lzz
+    year: amount
+    month: round_down(amount * 12, 0.01 EUR)
+    week: round_down(amount * 360 / 7, 0.01 EUR)
+    otherwise: round_down(amount * 360, 0.01 EUR)
+  }
+}
+
+record insurance {
+  label de "Merker für die Vorsorgepauschale"
+  label en "Markers for the provident lump sum"
+  field krv : bool {
+    label de "nicht in der gesetzlichen Rentenversicherung pflichtversichert (KRV = 1)"
+    label en "not compulsorily insured in the statutory pension insurance (KRV = 1)"
+  }
+  field alv : bool {
+    label de "nicht in der Arbeitslosenversicherung pflichtversichert (ALV = 1)"
+    label en "not compulsorily insured against unemployment (ALV = 1)"
+  }
+  field pkv : bool {
+    label de "ausschließlich privat krankenversichert (PKV = 1)"
+    label en "only privately health-insured (PKV = 1)"
+  }
+  field kvz : decimal {
+    label de "kassenindividueller Zusatzbeitragssatz in Prozent (KVZ)"
+    label en "additional contribution rate of the health insurer, in percent (KVZ)"
+  }
+  field pvs : bool {
+    label de "Besonderheiten der Pflegeversicherung in Sachsen (PVS = 1)"
+    label en "the special rules of long-term care insurance in Saxony (PVS = 1)"
+  }
+  field pvz : bool {
+    label de "Zuschlag zur Pflegeversicherung für Kinderlose (PVZ = 1)"
+    label en "surcharge on long-term care insurance for the childless (PVZ = 1)"
+  }
+  field pva : int {
+    label de "Zahl der Beitragsabschläge für Kinder in der Pflegeversicherung (PVA, 0 bis 4)"
+    label en "number of reductions for children in long-term care insurance (PVA, 0 to 4)"
+  }
+  field pkpv : money {
+    label de "Beiträge zur privaten Basiskranken- und Pflege-Pflichtversicherung im Monat (PKPV)"
+    label en "monthly contributions to private basic health and long-term care insurance (PKPV)"
+  }
+  field pkpvagz : money {
+    label de "steuerfreier Arbeitgeberzuschuss dazu im Monat (PKPVAGZ)"
+    label en "tax-free employer subsidy to it per month (PKPVAGZ)"
+  }
+}
+
+norm pension_tables {
+  label de "Versorgungsfreibetrag nach dem Jahr des Versorgungsbeginns (TAB1 bis TAB3)"
+  label en "Allowance for pensions by the year the pension began (TAB1 to TAB3)"
+  source "PAP 2026, Tabelle zu § 19 Abs. 2 EStG (Seite 18)"
+
+  input vjahr : int {
+    label de "Jahr des Versorgungsbeginns (VJAHR)"
+    label en "year the pension began (VJAHR)"
+  }
+
+  rule tab1 : decimal {
+    label de "Prozentsatz des Versorgungsfreibetrags (TAB1)"
+    label en "percentage of the allowance for pensions (TAB1)"
+    by vjahr
+    up to 2005: 0.4
+    up to 2006: 0.384
+    up to 2007: 0.368
+    up to 2008: 0.352
+    up to 2009: 0.336
+    up to 2010: 0.32
+    up to 2011: 0.304
+    up to 2012: 0.288
+    up to 2013: 0.272
+    up to 2014: 0.256
+    up to 2015: 0.24
+    up to 2016: 0.224
+    up to 2017: 0.208
+    up to 2018: 0.192
+    up to 2019: 0.176
+    up to 2020: 0.16
+    up to 2021: 0.152
+    up to 2022: 0.144
+    up to 2023: 0.14
+    up to 2024: 0.136
+    up to 2025: 0.132
+    up to 2026: 0.128
+    up to 2027: 0.124
+    up to 2028: 0.12
+    up to 2029: 0.116
+    up to 2030: 0.112
+    up to 2031: 0.108
+    up to 2032: 0.104
+    up to 2033: 0.1
+    up to 2034: 0.096
+    up to 2035: 0.092
+    up to 2036: 0.088
+    up to 2037: 0.084
+    up to 2038: 0.08
+    up to 2039: 0.076
+    up to 2040: 0.072
+    up to 2041: 0.068
+    up to 2042: 0.064
+    up to 2043: 0.06
+    up to 2044: 0.056
+    up to 2045: 0.052
+    up to 2046: 0.048
+    up to 2047: 0.044
+    up to 2048: 0.04
+    up to 2049: 0.036
+    up to 2050: 0.032
+    up to 2051: 0.028
+    up to 2052: 0.024
+    up to 2053: 0.02
+    up to 2054: 0.016
+    up to 2055: 0.012
+    up to 2056: 0.008
+    up to 2057: 0.004
+    otherwise: 0
+  }
+  rule tab2 : money {
+    label de "Höchstbetrag des Versorgungsfreibetrags (TAB2)"
+    label en "maximum of the allowance for pensions (TAB2)"
+    by vjahr
+    up to 2005: 3_000 EUR
+    up to 2006: 2_880 EUR
+    up to 2007: 2_760 EUR
+    up to 2008: 2_640 EUR
+    up to 2009: 2_520 EUR
+    up to 2010: 2_400 EUR
+    up to 2011: 2_280 EUR
+    up to 2012: 2_160 EUR
+    up to 2013: 2_040 EUR
+    up to 2014: 1_920 EUR
+    up to 2015: 1_800 EUR
+    up to 2016: 1_680 EUR
+    up to 2017: 1_560 EUR
+    up to 2018: 1_440 EUR
+    up to 2019: 1_320 EUR
+    up to 2020: 1_200 EUR
+    up to 2021: 1_140 EUR
+    up to 2022: 1_080 EUR
+    up to 2023: 1_050 EUR
+    up to 2024: 1_020 EUR
+    up to 2025: 990 EUR
+    up to 2026: 960 EUR
+    up to 2027: 930 EUR
+    up to 2028: 900 EUR
+    up to 2029: 870 EUR
+    up to 2030: 840 EUR
+    up to 2031: 810 EUR
+    up to 2032: 780 EUR
+    up to 2033: 750 EUR
+    up to 2034: 720 EUR
+    up to 2035: 690 EUR
+    up to 2036: 660 EUR
+    up to 2037: 630 EUR
+    up to 2038: 600 EUR
+    up to 2039: 570 EUR
+    up to 2040: 540 EUR
+    up to 2041: 510 EUR
+    up to 2042: 480 EUR
+    up to 2043: 450 EUR
+    up to 2044: 420 EUR
+    up to 2045: 390 EUR
+    up to 2046: 360 EUR
+    up to 2047: 330 EUR
+    up to 2048: 300 EUR
+    up to 2049: 270 EUR
+    up to 2050: 240 EUR
+    up to 2051: 210 EUR
+    up to 2052: 180 EUR
+    up to 2053: 150 EUR
+    up to 2054: 120 EUR
+    up to 2055: 90 EUR
+    up to 2056: 60 EUR
+    up to 2057: 30 EUR
+    otherwise: 0 EUR
+  }
+  rule tab3 : money {
+    label de "Zuschlag zum Versorgungsfreibetrag (TAB3)"
+    label en "supplement to the allowance for pensions (TAB3)"
+    by vjahr
+    up to 2005: 900 EUR
+    up to 2006: 864 EUR
+    up to 2007: 828 EUR
+    up to 2008: 792 EUR
+    up to 2009: 756 EUR
+    up to 2010: 720 EUR
+    up to 2011: 684 EUR
+    up to 2012: 648 EUR
+    up to 2013: 612 EUR
+    up to 2014: 576 EUR
+    up to 2015: 540 EUR
+    up to 2016: 504 EUR
+    up to 2017: 468 EUR
+    up to 2018: 432 EUR
+    up to 2019: 396 EUR
+    up to 2020: 360 EUR
+    up to 2021: 342 EUR
+    up to 2022: 324 EUR
+    up to 2023: 315 EUR
+    up to 2024: 306 EUR
+    up to 2025: 297 EUR
+    up to 2026: 288 EUR
+    up to 2027: 279 EUR
+    up to 2028: 270 EUR
+    up to 2029: 261 EUR
+    up to 2030: 252 EUR
+    up to 2031: 243 EUR
+    up to 2032: 234 EUR
+    up to 2033: 225 EUR
+    up to 2034: 216 EUR
+    up to 2035: 207 EUR
+    up to 2036: 198 EUR
+    up to 2037: 189 EUR
+    up to 2038: 180 EUR
+    up to 2039: 171 EUR
+    up to 2040: 162 EUR
+    up to 2041: 153 EUR
+    up to 2042: 144 EUR
+    up to 2043: 135 EUR
+    up to 2044: 126 EUR
+    up to 2045: 117 EUR
+    up to 2046: 108 EUR
+    up to 2047: 99 EUR
+    up to 2048: 90 EUR
+    up to 2049: 81 EUR
+    up to 2050: 72 EUR
+    up to 2051: 63 EUR
+    up to 2052: 54 EUR
+    up to 2053: 45 EUR
+    up to 2054: 36 EUR
+    up to 2055: 27 EUR
+    up to 2056: 18 EUR
+    up to 2057: 9 EUR
+    otherwise: 0 EUR
+  }
+}
+
+norm relief_tables {
+  label de "Altersentlastungsbetrag nach dem Jahr nach Vollendung des 64. Lebensjahres (TAB4, TAB5)"
+  label en "Relief for old age by the year after the 64th birthday (TAB4, TAB5)"
+  source "PAP 2026, Tabelle zu § 24a EStG (Seite 19)"
+
+  input ajahr : int {
+    label de "auf die Vollendung des 64. Lebensjahres folgendes Kalenderjahr (AJAHR)"
+    label en "calendar year after the 64th birthday (AJAHR)"
+  }
+
+  rule tab4 : decimal {
+    label de "Prozentsatz des Altersentlastungsbetrags (TAB4)"
+    label en "percentage of the relief for old age (TAB4)"
+    by ajahr
+    up to 2005: 0.4
+    up to 2006: 0.384
+    up to 2007: 0.368
+    up to 2008: 0.352
+    up to 2009: 0.336
+    up to 2010: 0.32
+    up to 2011: 0.304
+    up to 2012: 0.288
+    up to 2013: 0.272
+    up to 2014: 0.256
+    up to 2015: 0.24
+    up to 2016: 0.224
+    up to 2017: 0.208
+    up to 2018: 0.192
+    up to 2019: 0.176
+    up to 2020: 0.16
+    up to 2021: 0.152
+    up to 2022: 0.144
+    up to 2023: 0.14
+    up to 2024: 0.136
+    up to 2025: 0.132
+    up to 2026: 0.128
+    up to 2027: 0.124
+    up to 2028: 0.12
+    up to 2029: 0.116
+    up to 2030: 0.112
+    up to 2031: 0.108
+    up to 2032: 0.104
+    up to 2033: 0.1
+    up to 2034: 0.096
+    up to 2035: 0.092
+    up to 2036: 0.088
+    up to 2037: 0.084
+    up to 2038: 0.08
+    up to 2039: 0.076
+    up to 2040: 0.072
+    up to 2041: 0.068
+    up to 2042: 0.064
+    up to 2043: 0.06
+    up to 2044: 0.056
+    up to 2045: 0.052
+    up to 2046: 0.048
+    up to 2047: 0.044
+    up to 2048: 0.04
+    up to 2049: 0.036
+    up to 2050: 0.032
+    up to 2051: 0.028
+    up to 2052: 0.024
+    up to 2053: 0.02
+    up to 2054: 0.016
+    up to 2055: 0.012
+    up to 2056: 0.008
+    up to 2057: 0.004
+    otherwise: 0
+  }
+  rule tab5 : money {
+    label de "Höchstbetrag des Altersentlastungsbetrags (TAB5)"
+    label en "maximum of the relief for old age (TAB5)"
+    by ajahr
+    up to 2005: 1_900 EUR
+    up to 2006: 1_824 EUR
+    up to 2007: 1_748 EUR
+    up to 2008: 1_672 EUR
+    up to 2009: 1_596 EUR
+    up to 2010: 1_520 EUR
+    up to 2011: 1_444 EUR
+    up to 2012: 1_368 EUR
+    up to 2013: 1_292 EUR
+    up to 2014: 1_216 EUR
+    up to 2015: 1_140 EUR
+    up to 2016: 1_064 EUR
+    up to 2017: 988 EUR
+    up to 2018: 912 EUR
+    up to 2019: 836 EUR
+    up to 2020: 760 EUR
+    up to 2021: 722 EUR
+    up to 2022: 684 EUR
+    up to 2023: 665 EUR
+    up to 2024: 646 EUR
+    up to 2025: 627 EUR
+    up to 2026: 608 EUR
+    up to 2027: 589 EUR
+    up to 2028: 570 EUR
+    up to 2029: 551 EUR
+    up to 2030: 532 EUR
+    up to 2031: 513 EUR
+    up to 2032: 494 EUR
+    up to 2033: 475 EUR
+    up to 2034: 456 EUR
+    up to 2035: 437 EUR
+    up to 2036: 418 EUR
+    up to 2037: 399 EUR
+    up to 2038: 380 EUR
+    up to 2039: 361 EUR
+    up to 2040: 342 EUR
+    up to 2041: 323 EUR
+    up to 2042: 304 EUR
+    up to 2043: 285 EUR
+    up to 2044: 266 EUR
+    up to 2045: 247 EUR
+    up to 2046: 228 EUR
+    up to 2047: 209 EUR
+    up to 2048: 190 EUR
+    up to 2049: 171 EUR
+    up to 2050: 152 EUR
+    up to 2051: 133 EUR
+    up to 2052: 114 EUR
+    up to 2053: 95 EUR
+    up to 2054: 76 EUR
+    up to 2055: 57 EUR
+    up to 2056: 38 EUR
+    up to 2057: 19 EUR
+    otherwise: 0 EUR
+  }
+}
+
+norm pension_allowance {
+  label de "Freibeträge für Versorgungsbezüge (MRE4)"
+  label en "Allowances for pensions (MRE4)"
+  source "PAP 2026, MRE4 (§ 19 Abs. 2 EStG, § 39b Abs. 2 Satz 3 EStG)"
+
+  input annual : bool {
+    label de "Jahresberechnung (LZZ = 1, bei sonstigen Bezügen immer)"
+    label en "computed for a year (LZZ = 1, always for other emoluments)"
+  }
+  input zmvb : int {
+    label de "Zahl der Monate mit Versorgungsbezügen im Kalenderjahr (ZMVB)"
+    label en "number of months with pensions in the calendar year (ZMVB)"
+  }
+  input vjahr : int {
+    label de "Jahr des Versorgungsbeginns (VJAHR)"
+    label en "year the pension began (VJAHR)"
+  }
+  input vbezm : money {
+    label de "Versorgungsbezug im Januar 2005 bzw. im ersten vollen Monat (VBEZM)"
+    label en "pension in January 2005 or in the first full month (VBEZM)"
+  }
+  input vbezs : money {
+    label de "voraussichtliche Sonderzahlungen im Jahr des Versorgungsbeginns (VBEZS)"
+    label en "expected special payments in the year the pension began (VBEZS)"
+  }
+  input vbezbso : money {
+    label de "Bemessungsgrundlage aus Sterbegeld und Kapitalauszahlungen (VBEZBSO)"
+    label en "base from death benefits and lump sums (VBEZBSO)"
+  }
+  input zvbezj : money {
+    label de "auf ein Jahr hochgerechnete Versorgungsbezüge (ZVBEZJ)"
+    label en "pensions projected to a year (ZVBEZJ)"
+  }
+
+  rule tab1 : decimal = pension_tables.tab1(vjahr = vjahr) {
+    label de "TAB1(J)"
+    label en "TAB1(J)"
+  }
+  rule tab2 : money = pension_tables.tab2(vjahr = vjahr) {
+    label de "TAB2(J)"
+    label en "TAB2(J)"
+  }
+  rule tab3 : money = pension_tables.tab3(vjahr = vjahr) {
+    label de "TAB3(J)"
+    label en "TAB3(J)"
+  }
+  rule vbezb : money = if annual then vbezm * zmvb + vbezs else vbezm * 12 + vbezs {
+    label de "Bemessungsgrundlage für den Versorgungsfreibetrag (VBEZB)"
+    label en "base of the allowance for pensions (VBEZB)"
+  }
+  rule hfvb : money = if annual then round_up(tab2 / 12 * zmvb, 1 EUR) else tab2 {
+    label de "maßgeblicher Höchstbetrag des Versorgungsfreibetrags (HFVB)"
+    label en "applicable maximum of the allowance (HFVB)"
+  }
+  rule fvbz_table : money = if annual then round_up(tab3 / 12 * zmvb, 1 EUR) else tab3 {
+    label de "Zuschlag zum Versorgungsfreibetrag vor der Begrenzung (FVBZ)"
+    label en "supplement before its limit (FVBZ)"
+  }
+  rule fvb : money {
+    label de "Versorgungsfreibetrag (FVB)"
+    label en "allowance for pensions (FVB)"
+    default min(min(round_up(vbezb * tab1, 0.01 EUR), hfvb), zvbezj)
+    unless zvbezj == 0 EUR then 0 EUR
+  }
+  rule fvbso : money {
+    label de "Versorgungsfreibetrag für den sonstigen Bezug (FVBSO)"
+    label en "allowance for pensions with the other emolument (FVBSO)"
+    default min(round_up(fvb + vbezbso * tab1, 0.01 EUR), tab2)
+    unless zvbezj == 0 EUR then 0 EUR
+  }
+  rule hfvbzso : money = round_down(vbezb + vbezbso - fvbso, 0.01 EUR) {
+    label de "Höchstbetrag des Zuschlags für den sonstigen Bezug (HFVBZSO)"
+    label en "maximum of the supplement with the other emolument (HFVBZSO)"
+  }
+  rule fvbzso_raw : money = round_up(fvbz_table + vbezbso, 1 EUR) {
+    label de "Zuschlag für den sonstigen Bezug vor der Begrenzung (FVBZSO)"
+    label en "supplement with the other emolument before its limits (FVBZSO)"
+  }
+  rule fvbzso : money {
+    label de "Zuschlag zum Versorgungsfreibetrag für den sonstigen Bezug (FVBZSO)"
+    label en "supplement with the other emolument (FVBZSO)"
+    default min(if fvbzso_raw > hfvbzso then round_up(hfvbzso, 1 EUR) else fvbzso_raw, tab3)
+    unless zvbezj == 0 EUR then 0 EUR
+  }
+  rule hfvbz : money = round_down(vbezb - fvb, 0.01 EUR) {
+    label de "Höchstbetrag des Zuschlags (HFVBZ)"
+    label en "maximum of the supplement (HFVBZ)"
+  }
+  rule fvbz : money {
+    label de "Zuschlag zum Versorgungsfreibetrag (FVBZ)"
+    label en "supplement to the allowance for pensions (FVBZ)"
+    default if fvbz_table > hfvbz then round_up(hfvbz, 1 EUR) else fvbz_table
+    unless zvbezj == 0 EUR then 0 EUR
+  }
+}
+
+norm old_age_relief {
+  label de "Altersentlastungsbetrag (MRE4ALTE)"
+  label en "Relief for old age (MRE4ALTE)"
+  source "PAP 2026, MRE4ALTE (§ 24a EStG, § 39b Abs. 2 Satz 3 EStG)"
+
+  input alter1 : bool {
+    label de "64. Lebensjahr vor Beginn des Kalenderjahres vollendet (ALTER1 = 1)"
+    label en "64 years old before the calendar year began (ALTER1 = 1)"
+  }
+  input ajahr : int {
+    label de "auf die Vollendung des 64. Lebensjahres folgendes Kalenderjahr (AJAHR)"
+    label en "calendar year after the 64th birthday (AJAHR)"
+  }
+  input zre4j : money {
+    label de "Jahresarbeitslohn (ZRE4J)"
+    label en "annual wage (ZRE4J)"
+  }
+  input zvbezj : money {
+    label de "darin enthaltene Versorgungsbezüge (ZVBEZJ)"
+    label en "pensions in it (ZVBEZJ)"
+  }
+
+  rule alte : money {
+    label de "Altersentlastungsbetrag (ALTE)"
+    label en "relief for old age (ALTE)"
+    default min(round_up((zre4j - zvbezj) * relief_tables.tab4(ajahr = ajahr), 1 EUR), relief_tables.tab5(ajahr = ajahr))
+    unless not alter1 then 0 EUR
+  }
+}
+
+norm annual_wage_tax {
+  label de "Jahressteuer auf einen Jahresarbeitslohn (MRE4ABZ, MZTABFB, MLSTJAHR)"
+  label en "Annual tax on an annual wage (MRE4ABZ, MZTABFB, MLSTJAHR)"
+  source "PAP 2026, MRE4ABZ, MZTABFB, MLSTJAHR, UPEVP, MVSPKVPV, MVSPHB"
 
   input stkl : tax_class {
     label de "Steuerklasse (STKL)"
     label en "tax class (STKL)"
   }
-  input lzz : pay_period {
-    label de "Lohnzahlungszeitraum (LZZ)"
-    label en "pay period (LZZ)"
-  }
-  input wage : money {
-    label de "steuerpflichtiger Arbeitslohn für den Lohnzahlungszeitraum (RE4)"
-    label en "taxable wage for the pay period (RE4)"
-  }
   input zkf : decimal {
-    label de "Zahl der Freibeträge für Kinder (ZKF, eine Dezimalstelle, nur Steuerklassen I bis IV)"
-    label en "number of allowances for children (ZKF, one decimal place, tax classes I to IV only)"
+    label de "Zahl der Freibeträge für Kinder (ZKF)"
+    label en "number of allowances for children (ZKF)"
   }
-  input r : bool {
-    label de "Mitglied einer Religionsgemeinschaft (R > 0)"
-    label en "member of a religious community (R > 0)"
+  input ins : insurance {
+    label de "Merker für die Vorsorgepauschale"
+    label en "markers for the provident lump sum"
   }
-  input krv : bool {
-    label de "nicht in der gesetzlichen Rentenversicherung pflichtversichert (KRV = 1)"
-    label en "not compulsorily insured in the statutory pension insurance (KRV = 1)"
+  input zre4j : money {
+    label de "Jahresarbeitslohn (ZRE4J)"
+    label en "annual wage (ZRE4J)"
   }
-  input alv : bool {
-    label de "nicht in der Arbeitslosenversicherung pflichtversichert (ALV = 1)"
-    label en "not compulsorily insured against unemployment (ALV = 1)"
+  input zvbezj : money {
+    label de "darin enthaltene Versorgungsbezüge (ZVBEZJ)"
+    label en "pensions in it (ZVBEZJ)"
   }
-  input pkv : bool {
-    label de "ausschließlich privat krankenversichert (PKV = 1)"
-    label en "only privately health-insured (PKV = 1)"
+  input fvb : money {
+    label de "Versorgungsfreibetrag (FVB, beim sonstigen Bezug FVBSO)"
+    label en "allowance for pensions (FVB, with the other emolument FVBSO)"
   }
-  input kvz : decimal {
-    label de "kassenindividueller Zusatzbeitragssatz in Prozent (KVZ)"
-    label en "additional contribution rate of the health insurer, in percent (KVZ)"
+  input fvbz : money {
+    label de "Zuschlag zum Versorgungsfreibetrag (FVBZ, beim sonstigen Bezug FVBZSO)"
+    label en "supplement to it (FVBZ, with the other emolument FVBZSO)"
   }
-  input pvs : bool {
-    label de "Besonderheiten der Pflegeversicherung in Sachsen (PVS = 1)"
-    label en "the special rules of long-term care insurance in Saxony (PVS = 1)"
+  input alte : money {
+    label de "Altersentlastungsbetrag (ALTE)"
+    label en "relief for old age (ALTE)"
   }
-  input pvz : bool {
-    label de "Zuschlag zur Pflegeversicherung für Kinderlose (PVZ = 1)"
-    label en "surcharge on long-term care insurance for the childless (PVZ = 1)"
+  input jlfreib : money {
+    label de "Jahresfreibetrag (JLFREIB)"
+    label en "annual allowance on the wage tax card (JLFREIB)"
   }
-  input pva : int {
-    label de "Zahl der Beitragsabschläge für Kinder in der Pflegeversicherung (PVA, 0 bis 4)"
-    label en "number of reductions for children in long-term care insurance (PVA, 0 to 4)"
+  input jlhinzu : money {
+    label de "Jahreshinzurechnungsbetrag (JLHINZU)"
+    label en "annual addition on the wage tax card (JLHINZU)"
   }
-  input pkpv : money {
-    label de "Beiträge zur privaten Basiskranken- und Pflege-Pflichtversicherung im Monat (PKPV)"
-    label en "monthly contributions to private basic health and long-term care insurance (PKPV)"
-  }
-  input pkpvagz : money {
-    label de "steuerfreier Arbeitgeberzuschuss dazu im Monat (PKPVAGZ)"
-    label en "tax-free employer subsidy to it per month (PKPVAGZ)"
+  input ent : money {
+    label de "von ZRE4VP abzuziehen: Entschädigungen, abzüglich nicht zu besteuernder Vorteile (JRE4ENT, SONSTENT, MBV)"
+    label en "to deduct from ZRE4VP: compensation, less untaxed benefits (JRE4ENT, SONSTENT, MBV)"
   }
 
   // MPARA
@@ -283,12 +789,7 @@ norm wage_tax {
     label en "contribution ceiling, health and long-term care insurance (BBGKVPV)"
     source "PAP 2026, MPARA"
   }
-  constant solzfrei : money = 20_350 EUR {
-    label de "Freigrenze Solidaritätszuschlag (SOLZFREI)"
-    label en "exemption limit, solidarity surcharge (SOLZFREI)"
-    source "PAP 2026, MPARA"
-  }
-  rule kvsatzan : decimal = round_down(kvz / 2 / 100 + 0.07, 0.00001) {
+  rule kvsatzan : decimal = round_down(ins.kvz / 2 / 100 + 0.07, 0.00001) {
     label de "Arbeitnehmeranteil Krankenversicherung (KVSATZAN, 5 Nachkommastellen)"
     label en "employee's rate, health insurance (KVSATZAN, 5 decimal places)"
     source "PAP 2026, MPARA"
@@ -297,35 +798,54 @@ norm wage_tax {
     label de "Arbeitnehmeranteil Pflegeversicherung (PVSATZAN)"
     label en "employee's rate, long-term care insurance (PVSATZAN)"
     source "PAP 2026, MPARA"
-    default (if pvs then 0.023 else 0.018) - pva * 0.0025
-    unless pvz then (if pvs then 0.023 else 0.018) + 0.006
+    default (if ins.pvs then 0.023 else 0.018) - ins.pva * 0.0025
+    unless ins.pvz then (if ins.pvs then 0.023 else 0.018) + 0.006
   }
 
-  // MRE4JL, MRE4ABZ (without pensions, relief for old age, allowances and additions)
-  rule zre4j : money {
-    label de "auf einen Jahreslohn hochgerechneter Arbeitslohn (ZRE4J, 2 Nachkommastellen)"
-    label en "wage projected to a year (ZRE4J, 2 decimal places)"
-    source "PAP 2026, MRE4JL (§ 39b Abs. 2 Satz 2 EStG)"
-    by lzz
-    year: wage
-    month: round_down(wage * 12, 0.01 EUR)
-    week: round_down(wage * 360 / 7, 0.01 EUR)
-    otherwise: round_down(wage * 360, 0.01 EUR)
-  }
-  rule zre4 : money = max(zre4j, 0 EUR) {
+  // MRE4ABZ
+  rule zre4 : money = max(round_down(zre4j - fvb - alte - jlfreib + jlhinzu, 0.01 EUR), 0 EUR) {
     label de "Jahresarbeitslohn nach Abzug der Freibeträge (ZRE4)"
     label en "annual wage after allowances (ZRE4)"
-    source "PAP 2026, MRE4JL, MRE4ABZ"
+    source "PAP 2026, MRE4ABZ (§ 39b Abs. 2 Satz 3 und 4 EStG)"
+  }
+  rule zre4vp : money = zre4j - ent {
+    label de "Jahresarbeitslohn für die Vorsorgepauschale (ZRE4VP)"
+    label en "annual wage for the provident lump sum (ZRE4VP)"
+    source "PAP 2026, MRE4ABZ, MOSONST, MRE4SONST"
+  }
+  rule zvbez : money = max(round_down(zvbezj - fvb, 0.01 EUR), 0 EUR) {
+    label de "Versorgungsbezüge nach Abzug des Versorgungsfreibetrags (ZVBEZ)"
+    label en "pensions after their allowance (ZVBEZ)"
+    source "PAP 2026, MRE4ABZ"
   }
 
   // MZTABFB
-  rule anp : money {
-    label de "Arbeitnehmer-Pauschbetrag (ANP)"
-    label en "employee's lump sum (ANP)"
-    source "PAP 2026, MZTABFB (§ 9a Satz 1 Nr. 1 Buchst. a EStG)"
+  rule fvbz_limited : money = if zvbez < fvbz then round_down(zvbez, 1 EUR) else fvbz {
+    label de "Zuschlag zum Versorgungsfreibetrag, höchstens ZVBEZ (FVBZ)"
+    label en "supplement to the allowance, at most ZVBEZ (FVBZ)"
+    source "PAP 2026, MZTABFB"
+  }
+  rule fvbz_table : money {
+    label de "Zuschlag zum Versorgungsfreibetrag in den Tabellenfreibeträgen (FVBZ)"
+    label en "supplement to the allowance among the fixed allowances (FVBZ)"
+    source "PAP 2026, MZTABFB"
     by stkl
     vi: 0 EUR
-    otherwise: if zre4 > 0 EUR then min(round_up(zre4, 1 EUR), 1_230 EUR) else 0 EUR
+    otherwise: fvbz_limited
+  }
+  rule anp_pension : money {
+    label de "Werbungskosten-Pauschbetrag für Versorgungsbezüge (ANP)"
+    label en "lump sum for expenses on pensions (ANP)"
+    source "PAP 2026, MZTABFB (§ 9a Satz 1 Nr. 1 Buchst. b EStG)"
+    default if zvbez > 0 EUR then (if zvbez - fvbz_limited < 102 EUR then round_up(zvbez - fvbz_limited, 1 EUR) else 102 EUR) else 0 EUR
+    unless stkl == tax_class.vi then 0 EUR
+  }
+  rule anp : money {
+    label de "Arbeitnehmer-Pauschbetrag/Werbungskosten-Pauschbetrag (ANP)"
+    label en "employee's lump sum and lump sum for expenses (ANP)"
+    source "PAP 2026, MZTABFB (§ 9a Satz 1 Nr. 1 Buchst. a EStG)"
+    default if zre4 > zvbez then (if zre4 - zvbez < 1_230 EUR then round_up(anp_pension + zre4 - zvbez, 1 EUR) else anp_pension + 1_230 EUR) else anp_pension
+    unless stkl == tax_class.vi then 0 EUR
   }
   rule efa : money {
     label de "Entlastungsbetrag für Alleinerziehende (EFA)"
@@ -361,14 +881,14 @@ norm wage_tax {
     vi: 0 EUR
     otherwise: round_down(zkf * 9_756 EUR, 1 EUR)
   }
-  rule ztabfb : money = efa + anp + sap {
+  rule ztabfb : money = round_down(efa + anp + sap + fvbz_table, 0.01 EUR) {
     label de "feste Tabellenfreibeträge (ZTABFB)"
     label en "fixed allowances of the tables (ZTABFB)"
     source "PAP 2026, MZTABFB"
   }
 
   // UPEVP, MVSPKVPV, MVSPHB
-  rule vspr : money = if krv then 0 EUR else round_down(min(zre4, bbgrvalv) * rvsatzan, 0.01 EUR) {
+  rule vspr : money = if ins.krv then 0 EUR else round_down(min(zre4vp, bbgrvalv) * rvsatzan, 0.01 EUR) {
     label de "Teilbetrag Rentenversicherung (VSPR)"
     label en "share for pension insurance (VSPR)"
     source "PAP 2026, UPEVP"
@@ -377,16 +897,16 @@ norm wage_tax {
     label de "Teilbetrag Kranken- und Pflegeversicherung (VSPKVPV)"
     label en "share for health and long-term care insurance (VSPKVPV)"
     source "PAP 2026, MVSPKVPV"
-    default round_down(min(zre4, bbgkvpv) * (kvsatzan + pvsatzan), 0.01 EUR)
-    unless pkv and stkl == tax_class.vi then 0 EUR
-    unless pkv then max(round_down(pkpv * 12, 0.01 EUR) - round_down(pkpvagz * 12, 0.01 EUR), 0 EUR)
+    default round_down(min(zre4vp, bbgkvpv) * (kvsatzan + pvsatzan), 0.01 EUR)
+    unless ins.pkv and stkl == tax_class.vi then 0 EUR
+    unless ins.pkv then max(round_down(ins.pkpv * 12, 0.01 EUR) - round_down(ins.pkpvagz * 12, 0.01 EUR), 0 EUR)
   }
   rule vsp_basic : money = round_up(vspkvpv + vspr, 1 EUR) {
     label de "Vorsorgepauschale (VSP) vor der Höchstbetragsberechnung"
     label en "provident lump sum (VSP) before the ceiling"
     source "PAP 2026, MVSPKVPV"
   }
-  rule vspalv : money = round_down(avsatzan * min(zre4, bbgrvalv), 0.01 EUR) {
+  rule vspalv : money = round_down(avsatzan * min(zre4vp, bbgrvalv), 0.01 EUR) {
     label de "Teilbetrag Arbeitslosenversicherung (VSPALV)"
     label en "share for unemployment insurance (VSPALV)"
     source "PAP 2026, MVSPHB"
@@ -406,85 +926,471 @@ norm wage_tax {
     label en "provident lump sum (VSP)"
     source "PAP 2026, UPEVP (§ 39b Abs. 2 Satz 5 Nr. 3 EStG)"
     default if vspn > vsp_basic then vspn else vsp_basic
-    unless alv or stkl == tax_class.vi then vsp_basic
+    unless ins.alv or stkl == tax_class.vi then vsp_basic
   }
 
-  // MLSTJAHR, UPMLST, MST5-6
+  // MLSTJAHR, UPMLST
   rule zve : money = zre4 - ztabfb - vsp {
     label de "zu versteuerndes Einkommen (ZVE)"
     label en "taxable income (ZVE)"
     source "PAP 2026, MLSTJAHR"
   }
-  rule lstjahr : money = annual_tax.st(stkl = stkl, kztab = kztab, zve = zve) {
+  rule st : money = annual_tax.st(stkl = stkl, kztab = kztab, zve = zve) {
+    label de "Jahressteuer (ST)"
+    label en "annual tax (ST)"
+    source "PAP 2026, UPMLST"
+  }
+  rule st_children : money = annual_tax.st(stkl = stkl, kztab = kztab, zve = zve - kfb) {
+    label de "Jahressteuer mit den Freibeträgen für Kinder (ST, Grundlage von JBMG und SOLZSBMG)"
+    label en "annual tax with the allowances for children (ST, base of JBMG and SOLZSBMG)"
+    source "PAP 2026, MBERECH, MSOLZSTS (§ 51a EStG)"
+  }
+
+  // Outputs for the plan on double taxation treaties (Anlage 3)
+  rule vfrb : money = anp + fvb + fvbz_table {
+    label de "verbrauchter Freibetrag (VFRB, VFRBS1, VFRBS2 vor Abzug)"
+    label en "allowance used (VFRB, VFRBS1, VFRBS2 before the deduction)"
+    source "PAP 2026, MBERECH, MOSONST, MRE4SONST"
+  }
+  rule wvfrb : money = max(zve - tariff.gfb, 0 EUR) {
+    label de "verfügbares ZVE über dem Grundfreibetrag (WVFRB, WVFRBO, WVFRBM)"
+    label en "taxable income above the basic allowance (WVFRB, WVFRBO, WVFRBM)"
+    source "PAP 2026, MBERECH, MOSONST, MSONST"
+  }
+}
+
+norm wage_tax {
+  label de "Lohnsteuer 2026 auf laufenden Arbeitslohn und sonstige Bezüge"
+  label en "Wage tax 2026 on current wages and other emoluments"
+  source "PAP 2026, Anlage 1 zum BMF-Schreiben vom 12.11.2025"
+  valid from 2026-01-01 to 2026-12-31
+
+  input stkl : tax_class {
+    label de "Steuerklasse (STKL)"
+    label en "tax class (STKL)"
+  }
+  input lzz : pay_period {
+    label de "Lohnzahlungszeitraum (LZZ)"
+    label en "pay period (LZZ)"
+  }
+  input wage : money {
+    label de "steuerpflichtiger Arbeitslohn für den Lohnzahlungszeitraum (RE4)"
+    label en "taxable wage for the pay period (RE4)"
+  }
+  input zkf : decimal {
+    label de "Zahl der Freibeträge für Kinder (ZKF, eine Dezimalstelle, nur Steuerklassen I bis IV)"
+    label en "number of allowances for children (ZKF, one decimal place, tax classes I to IV only)"
+  }
+  input r : bool {
+    label de "Mitglied einer Religionsgemeinschaft (R > 0)"
+    label en "member of a religious community (R > 0)"
+  }
+  input ins : insurance {
+    label de "Merker für die Vorsorgepauschale (KRV, ALV, PKV, KVZ, PVS, PVZ, PVA, PKPV, PKPVAGZ)"
+    label en "markers for the provident lump sum (KRV, ALV, PKV, KVZ, PVS, PVZ, PVA, PKPV, PKPVAGZ)"
+  }
+  input af : bool {
+    label de "Faktorverfahren gewählt (AF = 1, nur Steuerklasse IV)"
+    label en "factor method chosen (AF = 1, tax class IV only)"
+  }
+  input f : decimal {
+    label de "eingetragener Faktor (F, drei Nachkommastellen)"
+    label en "factor entered (F, three decimal places)"
+  }
+  input lzzfreib : money {
+    label de "Freibetrag für den Lohnzahlungszeitraum (LZZFREIB)"
+    label en "allowance for the pay period on the wage tax card (LZZFREIB)"
+  }
+  input lzzhinzu : money {
+    label de "Hinzurechnungsbetrag für den Lohnzahlungszeitraum (LZZHINZU)"
+    label en "addition for the pay period on the wage tax card (LZZHINZU)"
+  }
+  input vbez : money {
+    label de "in RE4 enthaltene Versorgungsbezüge (VBEZ)"
+    label en "pensions in RE4 (VBEZ)"
+  }
+  input vbezm : money {
+    label de "Versorgungsbezug im Januar 2005 bzw. im ersten vollen Monat (VBEZM)"
+    label en "pension in January 2005 or in the first full month (VBEZM)"
+  }
+  input vbezs : money {
+    label de "voraussichtliche Sonderzahlungen im Jahr des Versorgungsbeginns (VBEZS)"
+    label en "expected special payments in the year the pension began (VBEZS)"
+  }
+  input vjahr : int {
+    label de "Jahr des Versorgungsbeginns (VJAHR)"
+    label en "year the pension began (VJAHR)"
+  }
+  input zmvb : int {
+    label de "Zahl der Monate mit Versorgungsbezügen im Kalenderjahr (ZMVB, nötig bei LZZ = 1)"
+    label en "number of months with pensions in the calendar year (ZMVB, needed if LZZ = 1)"
+  }
+  input alter1 : bool {
+    label de "64. Lebensjahr vor Beginn des Kalenderjahres vollendet (ALTER1 = 1)"
+    label en "64 years old before the calendar year began (ALTER1 = 1)"
+  }
+  input ajahr : int {
+    label de "auf die Vollendung des 64. Lebensjahres folgendes Kalenderjahr (AJAHR)"
+    label en "calendar year after the 64th birthday (AJAHR)"
+  }
+  input sonstb : money {
+    label de "sonstige Bezüge (SONSTB)"
+    label en "other emoluments (SONSTB)"
+  }
+  input sonstent : money {
+    label de "darin enthaltene Entschädigungen und zu besteuernde Vorteile aus Vermögensbeteiligungen (SONSTENT)"
+    label en "compensation and taxable benefits from employee shares in them (SONSTENT)"
+  }
+  input sterbe : money {
+    label de "darin enthaltenes Sterbegeld und Kapitalauszahlungen/Abfindungen (STERBE)"
+    label en "death benefits and lump sums in them (STERBE)"
+  }
+  input vbs : money {
+    label de "darin enthaltene Versorgungsbezüge einschließlich Sterbegeld (VBS)"
+    label en "pensions in them, death benefits included (VBS)"
+  }
+  input mbv : money {
+    label de "nicht zu besteuernde Vorteile bei Vermögensbeteiligungen (MBV)"
+    label en "untaxed benefits from employee shares (MBV)"
+  }
+  input jre4 : money {
+    label de "voraussichtlicher Jahresarbeitslohn ohne sonstige Bezüge (JRE4)"
+    label en "expected annual wage without other emoluments (JRE4)"
+  }
+  input jre4ent : money {
+    label de "darin enthaltene Entschädigungen und zu besteuernde Vorteile aus Vermögensbeteiligungen (JRE4ENT)"
+    label en "compensation and taxable benefits from employee shares in it (JRE4ENT)"
+  }
+  input jvbez : money {
+    label de "darin enthaltene Versorgungsbezüge (JVBEZ)"
+    label en "pensions in it (JVBEZ)"
+  }
+  input jfreib : money {
+    label de "Jahresfreibetrag für sonstige Bezüge (JFREIB)"
+    label en "annual allowance for other emoluments (JFREIB)"
+  }
+  input jhinzu : money {
+    label de "Jahreshinzurechnungsbetrag für sonstige Bezüge (JHINZU)"
+    label en "annual addition for other emoluments (JHINZU)"
+  }
+
+  constant solzfrei : money = 20_350 EUR {
+    label de "Freigrenze Solidaritätszuschlag (SOLZFREI)"
+    label en "exemption limit, solidarity surcharge (SOLZFREI)"
+    source "PAP 2026, MPARA"
+  }
+
+  rule factor : decimal = if af then f else 1 {
+    label de "anzuwendender Faktor (F)"
+    label en "factor applied (F)"
+    source "PAP 2026, MRE4JL (§ 39f EStG)"
+  }
+  rule kztab : int {
+    label de "Tarifart (KZTAB)"
+    label en "kind of scale (KZTAB)"
+    source "PAP 2026, MZTABFB"
+    by stkl
+    iii: 2
+    otherwise: 1
+  }
+
+  // MRE4JL
+  rule zre4j : money = projection.year(lzz = lzz, amount = wage) {
+    label de "auf einen Jahreslohn hochgerechneter Arbeitslohn (ZRE4J)"
+    label en "wage projected to a year (ZRE4J)"
+    source "PAP 2026, MRE4JL"
+  }
+  rule zvbezj : money = projection.year(lzz = lzz, amount = vbez) {
+    label de "auf einen Jahreslohn hochgerechnete Versorgungsbezüge (ZVBEZJ)"
+    label en "pensions projected to a year (ZVBEZJ)"
+    source "PAP 2026, MRE4JL"
+  }
+  rule jlfreib : money = projection.year(lzz = lzz, amount = lzzfreib) {
+    label de "auf einen Jahreslohn hochgerechneter Freibetrag (JLFREIB)"
+    label en "allowance projected to a year (JLFREIB)"
+    source "PAP 2026, MRE4JL"
+  }
+  rule jlhinzu : money = projection.year(lzz = lzz, amount = lzzhinzu) {
+    label de "auf einen Jahreslohn hochgerechneter Hinzurechnungsbetrag (JLHINZU)"
+    label en "addition projected to a year (JLHINZU)"
+    source "PAP 2026, MRE4JL"
+  }
+
+  // MRE4, MRE4ALTE
+  rule fvb : money = pension_allowance.fvb(annual = lzz == pay_period.year, zmvb = zmvb, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = 0 EUR, zvbezj = zvbezj) {
+    label de "Versorgungsfreibetrag (FVB)"
+    label en "allowance for pensions (FVB)"
+    source "PAP 2026, MRE4"
+  }
+  rule fvbz : money = pension_allowance.fvbz(annual = lzz == pay_period.year, zmvb = zmvb, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = 0 EUR, zvbezj = zvbezj) {
+    label de "Zuschlag zum Versorgungsfreibetrag (FVBZ)"
+    label en "supplement to the allowance for pensions (FVBZ)"
+    source "PAP 2026, MRE4"
+  }
+  rule alte : money = old_age_relief.alte(alter1 = alter1, ajahr = ajahr, zre4j = zre4j, zvbezj = zvbezj) {
+    label de "Altersentlastungsbetrag (ALTE)"
+    label en "relief for old age (ALTE)"
+    source "PAP 2026, MRE4ALTE"
+  }
+
+  // MBERECH: the annual tax on the current wage, and with the allowances for children
+  rule st : money = annual_wage_tax.st(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j, zvbezj = zvbezj, fvb = fvb, fvbz = fvbz, alte = alte, jlfreib = jlfreib, jlhinzu = jlhinzu, ent = 0 EUR) {
+    label de "Jahressteuer auf den laufenden Arbeitslohn (ST)"
+    label en "annual tax on the current wage (ST)"
+    source "PAP 2026, MBERECH, MLSTJAHR"
+  }
+  rule lstjahr : money = round_down(st * factor, 1 EUR) {
     label de "Jahreslohnsteuer (LSTJAHR)"
     label en "annual wage tax (LSTJAHR)"
-    source "PAP 2026, MBERECH, UPMLST"
+    source "PAP 2026, MBERECH"
   }
-
-  // UPLSTLZZ, UPANTEIL
-  rule lstlzz : money = share.anteil1(lzz = lzz, jw = lstjahr) {
-    label de "Lohnsteuer für den Lohnzahlungszeitraum (LSTLZZ)"
-    label en "wage tax for the pay period (LSTLZZ)"
-    source "PAP 2026, UPLSTLZZ"
-  }
-
-  // MBERECH: the base of the solidarity surcharge and the church tax, with the allowances for children
-  rule jbmg : money = annual_tax.st(stkl = stkl, kztab = kztab, zve = zve - kfb) {
+  rule jbmg : money = round_down(annual_wage_tax.st_children(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j, zvbezj = zvbezj, fvb = fvb, fvbz = fvbz, alte = alte, jlfreib = jlfreib, jlhinzu = jlhinzu, ent = 0 EUR) * factor, 1 EUR) {
     label de "Jahressteuer nach § 51a EStG (JBMG)"
     label en "annual tax under § 51a EStG (JBMG)"
     source "PAP 2026, MBERECH (§ 51a EStG)"
   }
 
-  // MSOLZ
+  // UPLSTLZZ, MSOLZ
+  rule lstlzz_current : money = share.anteil1(lzz = lzz, jw = lstjahr) {
+    label de "Lohnsteuer für den Lohnzahlungszeitraum vor STSMIN (LSTLZZ)"
+    label en "wage tax for the pay period before STSMIN (LSTLZZ)"
+    source "PAP 2026, UPLSTLZZ"
+  }
   rule solzj : money = if jbmg > solzfrei * kztab then min(round_down(jbmg * 0.055, 0.01 EUR), round_down((jbmg - solzfrei * kztab) * 0.119, 0.01 EUR)) else 0 EUR {
     label de "Solidaritätszuschlag auf die Jahreslohnsteuer (SOLZJ)"
     label en "solidarity surcharge on the annual wage tax (SOLZJ)"
     source "PAP 2026, MSOLZ"
   }
-  rule solzlzz : money = share.anteil1(lzz = lzz, jw = solzj) {
-    label de "Solidaritätszuschlag für den Lohnzahlungszeitraum (SOLZLZZ)"
-    label en "solidarity surcharge for the pay period (SOLZLZZ)"
+  rule solzlzz_current : money = share.anteil1(lzz = lzz, jw = solzj) {
+    label de "Solidaritätszuschlag für den Lohnzahlungszeitraum vor STSMIN (SOLZLZZ)"
+    label en "solidarity surcharge for the pay period before STSMIN (SOLZLZZ)"
     source "PAP 2026, MSOLZ"
   }
-  rule bk : money = if r then share.anteil1(lzz = lzz, jw = jbmg) else 0 EUR {
+  rule bk_current : money = if r then share.anteil1(lzz = lzz, jw = jbmg) else 0 EUR {
+    label de "Bemessungsgrundlage der Kirchenlohnsteuer vor STSMIN (BK)"
+    label en "base of the church wage tax before STSMIN (BK)"
+    source "PAP 2026, MSOLZ (§ 51a EStG)"
+  }
+
+  // MSONST: the tax on other emoluments is the difference of the annual tax with them and without them. The
+  // computation is always for a year (LZZ = 1); without ZMVB, twelve months.
+  rule other : bool = sonstb != 0 EUR or mbv != 0 EUR {
+    label de "sonstige Bezüge oder nicht zu besteuernde Vorteile vorhanden"
+    label en "other emoluments or untaxed benefits given"
+    source "PAP 2026, MSONST"
+  }
+  rule zmvb_other : int = if zmvb == 0 then 12 else zmvb {
+    label de "ZMVB für die sonstigen Bezüge"
+    label en "ZMVB for the other emoluments"
+    source "PAP 2026, MSONST"
+  }
+
+  // MOSONST: without the other emoluments
+  rule fvb_without : money = pension_allowance.fvb(annual = true, zmvb = zmvb_other, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = 0 EUR, zvbezj = jvbez) {
+    label de "Versorgungsfreibetrag ohne sonstige Bezüge (FVB)"
+    label en "allowance for pensions without other emoluments (FVB)"
+    source "PAP 2026, MOSONST, MRE4"
+  }
+  rule fvbz_without : money = pension_allowance.fvbz(annual = true, zmvb = zmvb_other, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = 0 EUR, zvbezj = jvbez) {
+    label de "Zuschlag zum Versorgungsfreibetrag ohne sonstige Bezüge (FVBZ)"
+    label en "supplement without other emoluments (FVBZ)"
+    source "PAP 2026, MOSONST, MRE4"
+  }
+  rule alte_without : money = old_age_relief.alte(alter1 = alter1, ajahr = ajahr, zre4j = jre4, zvbezj = jvbez) {
+    label de "Altersentlastungsbetrag ohne sonstige Bezüge (ALTE)"
+    label en "relief for old age without other emoluments (ALTE)"
+    source "PAP 2026, MOSONST, MRE4ALTE"
+  }
+  rule lstoso : money = annual_wage_tax.st(stkl = stkl, zkf = zkf, ins = ins, zre4j = jre4, zvbezj = jvbez, fvb = fvb_without, fvbz = fvbz_without, alte = alte_without, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent) {
+    label de "Jahressteuer ohne sonstige Bezüge (LSTOSO)"
+    label en "annual tax without other emoluments (LSTOSO)"
+    source "PAP 2026, MOSONST"
+  }
+
+  // MRE4SONST: with the other emoluments
+  rule zre4j_with : money = jre4 + sonstb {
+    label de "Jahresarbeitslohn mit sonstigen Bezügen (ZRE4J)"
+    label en "annual wage with other emoluments (ZRE4J)"
+    source "PAP 2026, MSONST"
+  }
+  rule zvbezj_with : money = jvbez + vbs {
+    label de "Versorgungsbezüge mit sonstigen Bezügen (ZVBEZJ)"
+    label en "pensions with other emoluments (ZVBEZJ)"
+    source "PAP 2026, MSONST"
+  }
+  rule fvb_with : money = pension_allowance.fvbso(annual = true, zmvb = zmvb_other, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = sterbe, zvbezj = zvbezj_with) {
+    label de "Versorgungsfreibetrag mit sonstigen Bezügen (FVB = FVBSO)"
+    label en "allowance for pensions with other emoluments (FVB = FVBSO)"
+    source "PAP 2026, MRE4SONST, MRE4"
+  }
+  rule fvbz_with : money = pension_allowance.fvbzso(annual = true, zmvb = zmvb_other, vjahr = vjahr, vbezm = vbezm, vbezs = vbezs, vbezbso = sterbe, zvbezj = zvbezj_with) {
+    label de "Zuschlag zum Versorgungsfreibetrag mit sonstigen Bezügen (FVBZ = FVBZSO)"
+    label en "supplement with other emoluments (FVBZ = FVBZSO)"
+    source "PAP 2026, MRE4SONST, MRE4"
+  }
+  rule alte_with : money = old_age_relief.alte(alter1 = alter1, ajahr = ajahr, zre4j = zre4j_with, zvbezj = zvbezj_with) {
+    label de "Altersentlastungsbetrag mit sonstigen Bezügen (ALTE)"
+    label en "relief for old age with other emoluments (ALTE)"
+    source "PAP 2026, MRE4SONST, MRE4ALTE"
+  }
+  rule lstso : money = annual_wage_tax.st(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j_with, zvbezj = zvbezj_with, fvb = fvb_with, fvbz = fvbz_with, alte = alte_with, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent + sonstent - mbv) {
+    label de "Jahressteuer mit sonstigen Bezügen (LSTSO)"
+    label en "annual tax with other emoluments (LSTSO)"
+    source "PAP 2026, MSONST"
+  }
+  rule sts_raw : money = (lstso - lstoso) * factor {
+    label de "Lohnsteuer auf die sonstigen Bezüge vor dem Runden"
+    label en "wage tax on the other emoluments before rounding"
+    source "PAP 2026, MSONST"
+  }
+  rule sts_rounded : money {
+    label de "Lohnsteuer auf die sonstigen Bezüge, auf volle Euro abgerundet – negative nach ihrem Betrag"
+    label en "wage tax on the other emoluments, rounded down to full euros – negative ones by their amount"
+    source "PAP 2026, MSONST"
+    default round_down(sts_raw, 1 EUR)
+    unless not other then 0 EUR
+    unless sts_raw < 0 EUR then 0 EUR - round_down(0 EUR - sts_raw, 1 EUR)
+  }
+
+  // STSMIN, MSOLZSTS
+  rule negative : bool = sts_rounded < 0 EUR {
+    label de "negative Lohnsteuer auf den sonstigen Bezug (nur aus nicht zu besteuernden Vorteilen)"
+    label en "negative wage tax on the other emolument (only from untaxed benefits)"
+    source "PAP 2026, STSMIN"
+  }
+  rule offset : bool = negative and mbv != 0 EUR {
+    label de "negativer Betrag mindert LSTLZZ, SOLZLZZ und BK"
+    label en "the negative amount reduces LSTLZZ, SOLZLZZ and BK"
+    source "PAP 2026, STSMIN"
+  }
+  rule sts : money = if negative then 0 EUR else sts_rounded {
+    label de "Lohnsteuer für sonstige Bezüge (STS)"
+    label en "wage tax on other emoluments (STS)"
+    source "PAP 2026, STSMIN"
+  }
+  rule solzsbmg : money = round_down(annual_wage_tax.st_children(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j_with, zvbezj = zvbezj_with, fvb = fvb_with, fvbz = fvbz_with, alte = alte_with, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent + sonstent - mbv) * factor, 1 EUR) {
+    label de "Bemessungsgrundlage zur Prüfung der Freigrenze beim Solidaritätszuschlag (SOLZSBMG)"
+    label en "base for the exemption limit of the solidarity surcharge (SOLZSBMG)"
+    source "PAP 2026, MSOLZSTS"
+  }
+  rule solzs : money = if not negative and solzsbmg > solzfrei * kztab then round_down(sts * 0.055, 0.01 EUR) else 0 EUR {
+    label de "Solidaritätszuschlag für sonstige Bezüge (SOLZS)"
+    label en "solidarity surcharge on other emoluments (SOLZS)"
+    source "PAP 2026, MSOLZSTS"
+  }
+  rule bks : money = if r then sts else 0 EUR {
+    label de "Bemessungsgrundlage der sonstigen Bezüge für die Kirchenlohnsteuer (BKS)"
+    label en "base of the church wage tax on other emoluments (BKS)"
+    source "PAP 2026, STSMIN"
+  }
+  rule lstlzz : money = if offset then max(lstlzz_current + sts_rounded, 0 EUR) else lstlzz_current {
+    label de "Lohnsteuer für den Lohnzahlungszeitraum (LSTLZZ)"
+    label en "wage tax for the pay period (LSTLZZ)"
+    source "PAP 2026, UPLSTLZZ, STSMIN"
+  }
+  rule solzlzz : money {
+    label de "Solidaritätszuschlag für den Lohnzahlungszeitraum (SOLZLZZ)"
+    label en "solidarity surcharge for the pay period (SOLZLZZ)"
+    source "PAP 2026, MSOLZ, STSMIN"
+    default solzlzz_current
+    unless offset and solzlzz_current + sts_rounded * 0.055 < 0 EUR then 0 EUR
+    unless offset then round_down(solzlzz_current + sts_rounded * 0.055, 0.01 EUR)
+  }
+  rule bk : money = if offset then max(bk_current + sts_rounded, 0 EUR) else bk_current {
     label de "Bemessungsgrundlage der Kirchenlohnsteuer (BK)"
     label en "base of the church wage tax (BK)"
-    source "PAP 2026, MSOLZ (§ 51a EStG)"
+    source "PAP 2026, MSOLZ, STSMIN (§ 51a EStG)"
+  }
+
+  // Outputs for the plan on double taxation treaties (Anlage 3)
+  rule vfrb : money = annual_wage_tax.vfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j, zvbezj = zvbezj, fvb = fvb, fvbz = fvbz, alte = alte, jlfreib = jlfreib, jlhinzu = jlhinzu, ent = 0 EUR) {
+    label de "verbrauchter Freibetrag beim laufenden Arbeitslohn (VFRB)"
+    label en "allowance used on the current wage (VFRB)"
+    source "PAP 2026, MBERECH"
+  }
+  rule wvfrb : money = annual_wage_tax.wvfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j, zvbezj = zvbezj, fvb = fvb, fvbz = fvbz, alte = alte, jlfreib = jlfreib, jlhinzu = jlhinzu, ent = 0 EUR) {
+    label de "verfügbares ZVE über dem Grundfreibetrag beim laufenden Arbeitslohn (WVFRB)"
+    label en "taxable income above the basic allowance, current wage (WVFRB)"
+    source "PAP 2026, MBERECH"
+  }
+  rule vfrbs1 : money {
+    label de "verbrauchter Freibetrag beim voraussichtlichen Jahresarbeitslohn (VFRBS1)"
+    label en "allowance used on the expected annual wage (VFRBS1)"
+    source "PAP 2026, MOSONST"
+    default annual_wage_tax.vfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = jre4, zvbezj = jvbez, fvb = fvb_without, fvbz = fvbz_without, alte = alte_without, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent)
+    unless not other then 0 EUR
+  }
+  rule wvfrbo : money {
+    label de "verfügbares ZVE über dem Grundfreibetrag beim voraussichtlichen Jahresarbeitslohn (WVFRBO)"
+    label en "taxable income above the basic allowance, expected annual wage (WVFRBO)"
+    source "PAP 2026, MOSONST"
+    default annual_wage_tax.wvfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = jre4, zvbezj = jvbez, fvb = fvb_without, fvbz = fvbz_without, alte = alte_without, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent)
+    unless not other then 0 EUR
+  }
+  rule vfrbs2 : money {
+    label de "verbrauchter Freibetrag bei den sonstigen Bezügen (VFRBS2)"
+    label en "allowance used on the other emoluments (VFRBS2)"
+    source "PAP 2026, MRE4SONST"
+    default annual_wage_tax.vfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j_with, zvbezj = zvbezj_with, fvb = fvb_with, fvbz = fvbz_with, alte = alte_with, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent + sonstent - mbv) - vfrbs1
+    unless not other then 0 EUR
+  }
+  rule wvfrbm : money {
+    label de "verfügbares ZVE über dem Grundfreibetrag bei den sonstigen Bezügen (WVFRBM)"
+    label en "taxable income above the basic allowance, other emoluments (WVFRBM)"
+    source "PAP 2026, MSONST"
+    default annual_wage_tax.wvfrb(stkl = stkl, zkf = zkf, ins = ins, zre4j = zre4j_with, zvbezj = zvbezj_with, fvb = fvb_with, fvbz = fvbz_with, alte = alte_with, jlfreib = jfreib, jlhinzu = jhinzu, ent = jre4ent + sonstent - mbv)
+    unless not other then 0 EUR
   }
 }
 
 example general_class_i_40000 {
   label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse I – 4.407 €"
   label en "Test table, general wage tax: 40,000 euros, class I – 4,407 euros"
-  statement lean "wage_tax.lstjahr { stkl := .i, lzz := .year, zkf := 0, r := false, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 4407"
-  proof lean "by norm_num [wage_tax.lstjahr, annual_tax.st, annual_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.zre4j, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+  statement lean "wage_tax.lstjahr { stkl := .i, lzz := .year, wage := 40000, zkf := 0, r := false, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 4407"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
 }
 
 example general_class_iii_40000 {
   label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse III – 1.000 €"
   label en "Test table, general wage tax: 40,000 euros, class III – 1,000 euros"
-  statement lean "wage_tax.lstjahr { stkl := .iii, lzz := .year, zkf := 0, r := false, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 1000"
-  proof lean "by norm_num [wage_tax.lstjahr, annual_tax.st, annual_tax.st_5_6, annual_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.zre4j, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+  statement lean "wage_tax.lstjahr { stkl := .iii, lzz := .year, wage := 40000, zkf := 0, r := false, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 1000"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
 }
 
 example general_class_v_40000 {
   label de "Prüftabelle allgemeine Lohnsteuer: 40.000 €, Steuerklasse V – 8.720 €"
   label en "Test table, general wage tax: 40,000 euros, class V – 8,720 euros"
-  statement lean "wage_tax.lstjahr { stkl := .v, lzz := .year, zkf := 0, r := false, wage := 40000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 8720"
-  proof lean "by norm_num [wage_tax.lstjahr, annual_tax.st, annual_tax.st_5_6, annual_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.zre4j, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+  statement lean "wage_tax.lstjahr { stkl := .v, lzz := .year, wage := 40000, zkf := 0, r := false, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 8720"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
 }
 
 example special_class_vi_110000 {
   label de "Prüftabelle besondere Lohnsteuer: 110.000 €, Steuerklasse VI – 41.973 €"
   label en "Test table, special wage tax: 110,000 euros, class VI – 41,973 euros"
-  statement lean "wage_tax.lstjahr { stkl := .vi, lzz := .year, zkf := 0, r := false, wage := 110000, krv := true, alv := true, pkv := true, kvz := 0, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 } = 41973"
-  proof lean "by norm_num [wage_tax.lstjahr, annual_tax.st, annual_tax.st_5_6, annual_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.zre4j, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, class_5_6_step.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+  statement lean "wage_tax.lstjahr { stkl := .vi, lzz := .year, wage := 110000, zkf := 0, r := false, ins := { krv := true, alv := true, pkv := true, kvz := 0, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 41973"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
 }
 
 example calculator_month_class_iv_9000 {
   label de "BMF-Lohnsteuerrechner 2026: 9.000 € im Monat, Steuerklasse IV, 1,5 Kinderfreibeträge – Lohnsteuer 2.227,41 €, Solidaritätszuschlag 32,77 €"
   label en "BMF wage tax calculator 2026: 9,000 euros a month, class IV, 1.5 child allowances – wage tax 2,227.41 euros, solidarity surcharge 32.77 euros"
   source "bmf-steuerrechner.de, Lohnsteuer 2026, abgerufen 2026-11-13"
-  statement lean "wage_tax.lstlzz { stkl := .iv, lzz := .month, zkf := 3 / 2, r := true, wage := 9000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 } = 222741 / 100 ∧ wage_tax.solzlzz { stkl := .iv, lzz := .month, zkf := 3 / 2, r := true, wage := 9000, krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 } = 3277 / 100"
-  proof lean "by norm_num [wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.solzj, wage_tax.jbmg, wage_tax.kfb, wage_tax.solzfrei, share.anteil1, wage_tax.lstjahr, annual_tax.st, annual_tax.x, wage_tax.zve, wage_tax.zre4, wage_tax.zre4j, wage_tax.ztabfb, wage_tax.efa, wage_tax.anp, wage_tax.sap, wage_tax.kztab, wage_tax.vsp, wage_tax.vsp_basic, wage_tax.vspn, wage_tax.vsphb, wage_tax.vspalv, wage_tax.vspkvpv, wage_tax.vspr, wage_tax.kvsatzan, wage_tax.pvsatzan, wage_tax.bbgrvalv, wage_tax.bbgkvpv, wage_tax.avsatzan, wage_tax.rvsatzan, tariff.st, tariff.y, tariff.z, tariff.gfb, verkodo.round_down, verkodo.round_up]"
+  statement lean "wage_tax.lstlzz { stkl := .iv, lzz := .month, wage := 9000, zkf := 3 / 2, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 222741 / 100 ∧ wage_tax.solzlzz { stkl := .iv, lzz := .month, wage := 9000, zkf := 3 / 2, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 3277 / 100"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
+}
+
+example pension_month_class_i {
+  label de "Versorgungsbezug 1.500 € von 3.000 € im Monat, Versorgungsbeginn 2026, Altersentlastungsbetrag ab 2026, Steuerklasse I – Lohnsteuer 253,83 €"
+  label en "Pension of 1,500 out of 3,000 euros a month, pension from 2026, relief for old age from 2026, class I – wage tax 253.83 euros"
+  source "BMF, Lohnsteuer2026.xml (maschinenlesbarer PAP), abgerufen 2026-11-18"
+  statement lean "wage_tax.lstlzz { stkl := .i, lzz := .month, wage := 3000, zkf := 0, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 1500, vbezm := 1500, vbezs := 0, vjahr := 2026, zmvb := 12, alter1 := true, ajahr := 2026, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 25383 / 100 ∧ wage_tax.vfrb { stkl := .i, lzz := .month, wage := 3000, zkf := 0, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 1500, vbezm := 1500, vbezs := 0, vjahr := 2026, zmvb := 12, alter1 := true, ajahr := 2026, sonstb := 0, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 0, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 2580"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
+}
+
+example other_emolument_class_iii {
+  label de "Sonstiger Bezug 3.000 € bei 48.000 € Jahresarbeitslohn, Steuerklasse III, ein Kinderfreibetrag – Lohnsteuer darauf 590 €, kein Solidaritätszuschlag"
+  label en "Other emolument of 3,000 euros with an annual wage of 48,000 euros, class III, one child allowance – wage tax on it 590 euros, no solidarity surcharge"
+  source "BMF, Lohnsteuer2026.xml (maschinenlesbarer PAP), abgerufen 2026-11-18"
+  statement lean "wage_tax.sts { stkl := .iii, lzz := .month, wage := 4000, zkf := 1, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 3000, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 48000, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 590 ∧ wage_tax.solzs { stkl := .iii, lzz := .month, wage := 4000, zkf := 1, r := true, ins := { krv := false, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := false, pva := 0, pkpv := 0, pkpvagz := 0 }, af := false, f := 1, lzzfreib := 0, lzzhinzu := 0, vbez := 0, vbezm := 0, vbezs := 0, vjahr := 0, zmvb := 0, alter1 := false, ajahr := 0, sonstb := 3000, sonstent := 0, sterbe := 0, vbs := 0, mbv := 0, jre4 := 48000, jre4ent := 0, jvbez := 0, jfreib := 0, jhinzu := 0 } = 0"
+  proof lean "by norm_num [tariff.gfb, tariff.y, tariff.z, tariff.st, class_5_6_step.st1, class_5_6_step.st2, class_5_6_step.diff, class_5_6_step.mist, class_5_6_step.st, annual_tax.w1stkl5, annual_tax.w2stkl5, annual_tax.w3stkl5, annual_tax.x, annual_tax.st_5_6, annual_tax.st, share.anteil1, projection.year, pension_tables.tab1, pension_tables.tab2, pension_tables.tab3, relief_tables.tab4, relief_tables.tab5, pension_allowance.tab1, pension_allowance.tab2, pension_allowance.tab3, pension_allowance.vbezb, pension_allowance.hfvb, pension_allowance.fvbz_table, pension_allowance.fvb, pension_allowance.fvbso, pension_allowance.hfvbzso, pension_allowance.fvbzso_raw, pension_allowance.fvbzso, pension_allowance.hfvbz, pension_allowance.fvbz, old_age_relief.alte, annual_wage_tax.bbgrvalv, annual_wage_tax.avsatzan, annual_wage_tax.rvsatzan, annual_wage_tax.bbgkvpv, annual_wage_tax.kvsatzan, annual_wage_tax.pvsatzan, annual_wage_tax.zre4, annual_wage_tax.zre4vp, annual_wage_tax.zvbez, annual_wage_tax.fvbz_limited, annual_wage_tax.fvbz_table, annual_wage_tax.anp_pension, annual_wage_tax.anp, annual_wage_tax.efa, annual_wage_tax.sap, annual_wage_tax.kztab, annual_wage_tax.kfb, annual_wage_tax.ztabfb, annual_wage_tax.vspr, annual_wage_tax.vspkvpv, annual_wage_tax.vsp_basic, annual_wage_tax.vspalv, annual_wage_tax.vsphb, annual_wage_tax.vspn, annual_wage_tax.vsp, annual_wage_tax.zve, annual_wage_tax.st, annual_wage_tax.st_children, annual_wage_tax.vfrb, annual_wage_tax.wvfrb, wage_tax.solzfrei, wage_tax.factor, wage_tax.kztab, wage_tax.zre4j, wage_tax.zvbezj, wage_tax.jlfreib, wage_tax.jlhinzu, wage_tax.fvb, wage_tax.fvbz, wage_tax.alte, wage_tax.st, wage_tax.lstjahr, wage_tax.jbmg, wage_tax.lstlzz_current, wage_tax.solzj, wage_tax.solzlzz_current, wage_tax.bk_current, wage_tax.other, wage_tax.zmvb_other, wage_tax.fvb_without, wage_tax.fvbz_without, wage_tax.alte_without, wage_tax.lstoso, wage_tax.zre4j_with, wage_tax.zvbezj_with, wage_tax.fvb_with, wage_tax.fvbz_with, wage_tax.alte_with, wage_tax.lstso, wage_tax.sts_raw, wage_tax.sts_rounded, wage_tax.negative, wage_tax.offset, wage_tax.sts, wage_tax.solzsbmg, wage_tax.solzs, wage_tax.bks, wage_tax.lstlzz, wage_tax.solzlzz, wage_tax.bk, wage_tax.vfrb, wage_tax.wvfrb, wage_tax.vfrbs1, wage_tax.wvfrbo, wage_tax.vfrbs2, wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
 }

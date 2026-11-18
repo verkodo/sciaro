@@ -1,0 +1,439 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The wage tax on pensions limited by double taxation treaties: the "Programmablaufplan für die Begrenzung der von
+// Versorgungsbezügen einzubehaltenden Lohnsteuer und des Solidaritätszuschlags nach den Abkommen zur Vermeidung der
+// Doppelbesteuerung ab 2026" (Anlage 3 to the BMF letter of 2025-11-12, IV C 5 - S 2361/00025/016/028, Stand
+// 12.11.2025 (endgültig)). Not tax advice.
+//
+// The plan applies only to pensions of persons with limited tax liability who may claim the treaty with Türkiye,
+// Norway or Spain, and only with the certificate under § 39 (2) and (3) EStG; for Spain not to pensions that began
+// before 2015 (section 1 of the plan). It runs the wage tax of 2026 (de.bmf.pap_lst_2026, Anlage 1) with the fields
+// of section 3.1.3 fixed (MSST); for Türkiye it adds the further allowance of the treaty (MVFRB, UMVFRB) and runs
+// it again; then it lowers the total to the treaty's maximum rate (MMAXST). Amounts the plan keeps in cents are written
+// here in euros with cents. The plan's test table (page 14: 43 annual pensions, classes I and VI, three treaties) is
+// checked with `verkodo eval` (tests/lst_2026.py).
+//
+// The flowchart was read from the rendered pages (the text of the PDF loses its layout): in UMVFRB the test
+// "DBAFREIB – WVFRBO > 0" belongs to the branch DBAFREIB < WVFRBM and does nothing when it fails; in MMAXST every "Nein"
+// ends the reduction (the excess is taken from SOLZS, then SOLZLZZ, then STS, then LSTLZZ). STDBA drops fractions of a
+// cent (section 3 of Anlage 1, which applies here too); the plan marks no rounding there. The test table agrees, but it
+// has neither other payments nor allowances, so those paths are checked only by reading (OPEN: no machine-readable
+// version of this plan was found).
+
+module de.bmf.pap_lst_dba_2026 original de, en
+
+enum treaty {
+  label de "Doppelbesteuerungsabkommen"
+  label en "Double taxation treaty"
+  source "LAND"
+  value turkey { label de "DBA Türkei" label en "treaty with Türkiye" }
+  value norway { label de "DBA Norwegen" label en "treaty with Norway" }
+  value spain { label de "DBA Spanien" label en "treaty with Spain" }
+}
+
+norm run {
+  label de "Aufruf der Lohnsteuerberechnung 2026 mit den Feldern nach Abschnitt 3.1.3 (MSST, LST2026)"
+  label en "The wage tax of 2026 with the fields of section 3.1.3 (MSST, LST2026)"
+  source "PAP DBA ab 2026, MSST"
+
+  input stkl : de.bmf.pap_lst_2026.tax_class {
+    label de "Steuerklasse (STKL, nur I oder VI)"
+    label en "tax class (STKL, I or VI only)"
+  }
+  input lzz : de.bmf.pap_lst_2026.pay_period {
+    label de "Lohnzahlungszeitraum (LZZ)"
+    label en "pay period (LZZ)"
+  }
+  input ins : de.bmf.pap_lst_2026.insurance {
+    label de "Merker für die Vorsorgepauschale (ALV wird 1)"
+    label en "markers for the provident lump sum (ALV becomes 1)"
+  }
+  input vbez : money {
+    label de "steuerpflichtiger Versorgungsbezug für den Lohnzahlungszeitraum (VBEZ)"
+    label en "taxable pension for the pay period (VBEZ)"
+  }
+  input vbezm : money {
+    label de "Versorgungsbezug im Januar 2005 bzw. im ersten vollen Monat (VBEZM)"
+    label en "pension in January 2005 or in the first full month (VBEZM)"
+  }
+  input vbezs : money {
+    label de "voraussichtliche Sonderzahlungen im Jahr des Versorgungsbeginns (VBEZS)"
+    label en "expected special payments in the year the pension began (VBEZS)"
+  }
+  input vjahr : int {
+    label de "Jahr des Versorgungsbeginns (VJAHR)"
+    label en "year the pension began (VJAHR)"
+  }
+  input zmvb : int {
+    label de "Zahl der Monate mit Versorgungsbezügen (ZMVB)"
+    label en "number of months with pensions (ZMVB)"
+  }
+  input vbs : money {
+    label de "sonstige Versorgungsbezüge (VBS)"
+    label en "other pension payments (VBS)"
+  }
+  input sterbe : money {
+    label de "Sterbegeld und Kapitalauszahlungen/Abfindungen (STERBE)"
+    label en "death benefits and lump sums (STERBE)"
+  }
+  input sonstent : money {
+    label de "in VBS enthaltene Entschädigungen (SONSTENT)"
+    label en "compensation in VBS (SONSTENT)"
+  }
+  input jvbez : money {
+    label de "voraussichtliche Versorgungsbezüge im Kalenderjahr ohne sonstige Bezüge (JVBEZ)"
+    label en "expected pensions in the calendar year without other payments (JVBEZ)"
+  }
+  input jre4ent : money {
+    label de "in JVBEZ enthaltene Entschädigungen (JRE4ENT)"
+    label en "compensation in JVBEZ (JRE4ENT)"
+  }
+  input jfreib : money {
+    label de "Jahresfreibetrag (JFREIB)"
+    label en "annual allowance (JFREIB)"
+  }
+  input jhinzu : money {
+    label de "Jahreshinzurechnungsbetrag (JHINZU)"
+    label en "annual addition (JHINZU)"
+  }
+  input lzzfreib : money {
+    label de "Freibetrag für den Lohnzahlungszeitraum (LZZFREIB)"
+    label en "allowance for the pay period (LZZFREIB)"
+  }
+  input lzzhinzu : money {
+    label de "Hinzurechnungsbetrag für den Lohnzahlungszeitraum (LZZHINZU)"
+    label en "addition for the pay period (LZZHINZU)"
+  }
+
+  rule lstlzz : money = de.bmf.pap_lst_2026.wage_tax.lstlzz(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "Lohnsteuer für den Lohnzahlungszeitraum (LSTLZZ)"
+    label en "wage tax for the pay period (LSTLZZ)"
+  }
+  rule solzlzz : money = de.bmf.pap_lst_2026.wage_tax.solzlzz(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "Solidaritätszuschlag für den Lohnzahlungszeitraum (SOLZLZZ)"
+    label en "solidarity surcharge for the pay period (SOLZLZZ)"
+  }
+  rule sts : money = de.bmf.pap_lst_2026.wage_tax.sts(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "Lohnsteuer für sonstige Bezüge (STS)"
+    label en "wage tax on other payments (STS)"
+  }
+  rule solzs : money = de.bmf.pap_lst_2026.wage_tax.solzs(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "Solidaritätszuschlag für sonstige Bezüge (SOLZS)"
+    label en "solidarity surcharge on other payments (SOLZS)"
+  }
+  rule vfrb : money = de.bmf.pap_lst_2026.wage_tax.vfrb(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verbrauchter Freibetrag beim laufenden Arbeitslohn (VFRB)"
+    label en "allowance used on the current pension (VFRB)"
+  }
+  rule vfrbs1 : money = de.bmf.pap_lst_2026.wage_tax.vfrbs1(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verbrauchter Freibetrag beim voraussichtlichen Jahresarbeitslohn (VFRBS1)"
+    label en "allowance used on the expected annual pension (VFRBS1)"
+  }
+  rule vfrbs2 : money = de.bmf.pap_lst_2026.wage_tax.vfrbs2(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verbrauchter Freibetrag bei den sonstigen Bezügen (VFRBS2)"
+    label en "allowance used on the other payments (VFRBS2)"
+  }
+  rule wvfrb : money = de.bmf.pap_lst_2026.wage_tax.wvfrb(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verfügbares ZVE über dem Grundfreibetrag beim laufenden Arbeitslohn (WVFRB)"
+    label en "taxable income above the basic allowance, current pension (WVFRB)"
+  }
+  rule wvfrbo : money = de.bmf.pap_lst_2026.wage_tax.wvfrbo(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verfügbares ZVE über dem Grundfreibetrag beim voraussichtlichen Jahresarbeitslohn (WVFRBO)"
+    label en "taxable income above the basic allowance, expected annual pension (WVFRBO)"
+  }
+  rule wvfrbm : money = de.bmf.pap_lst_2026.wage_tax.wvfrbm(
+    stkl = stkl, lzz = lzz, wage = vbez, zkf = 0, r = false, ins = ins, af = false, f = 0,
+    lzzfreib = lzzfreib, lzzhinzu = lzzhinzu, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb,
+    alter1 = false, ajahr = 0, sonstb = vbs, sonstent = sonstent, sterbe = sterbe, vbs = vbs, mbv = 0 EUR,
+    jre4 = jvbez, jre4ent = jre4ent, jvbez = jvbez, jfreib = jfreib, jhinzu = jhinzu) {
+    label de "verfügbares ZVE über dem Grundfreibetrag bei den sonstigen Bezügen (WVFRBM)"
+    label en "taxable income above the basic allowance, other payments (WVFRBM)"
+  }
+}
+
+norm limited_wage_tax {
+  label de "Lohnsteuer auf Versorgungsbezüge, begrenzt nach den DBA Türkei, Norwegen und Spanien"
+  label en "Wage tax on pensions, limited by the treaties with Türkiye, Norway and Spain"
+  source "PAP DBA ab 2026, Anlage 3 zum BMF-Schreiben vom 12.11.2025"
+  valid from 2026-01-01 to 2026-12-31
+
+  input land : treaty {
+    label de "Abkommen (LAND)"
+    label en "treaty (LAND)"
+  }
+  input stkl : de.bmf.pap_lst_2026.tax_class {
+    label de "Steuerklasse (STKL, nur I oder VI)"
+    label en "tax class (STKL, I or VI only)"
+  }
+  input lzz : de.bmf.pap_lst_2026.pay_period {
+    label de "Lohnzahlungszeitraum (LZZ)"
+    label en "pay period (LZZ)"
+  }
+  input ins : de.bmf.pap_lst_2026.insurance {
+    label de "Merker für die Vorsorgepauschale (KRV, PKV, KVZ, PVS, PVZ, PVA, PKPV, PKPVAGZ; ALV gilt als 1)"
+    label en "markers for the provident lump sum (KRV, PKV, KVZ, PVS, PVZ, PVA, PKPV, PKPVAGZ; ALV counts as 1)"
+  }
+  input vbez : money {
+    label de "steuerpflichtiger Versorgungsbezug für den Lohnzahlungszeitraum (VBEZ)"
+    label en "taxable pension for the pay period (VBEZ)"
+  }
+  input vbezm : money {
+    label de "Versorgungsbezug im Januar 2005 bzw. im ersten vollen Monat (VBEZM)"
+    label en "pension in January 2005 or in the first full month (VBEZM)"
+  }
+  input vbezs : money {
+    label de "voraussichtliche Sonderzahlungen im Jahr des Versorgungsbeginns (VBEZS)"
+    label en "expected special payments in the year the pension began (VBEZS)"
+  }
+  input vjahr : int {
+    label de "Jahr des Versorgungsbeginns (VJAHR)"
+    label en "year the pension began (VJAHR)"
+  }
+  input zmvb : int {
+    label de "Zahl der Monate mit Versorgungsbezügen (ZMVB)"
+    label en "number of months with pensions (ZMVB)"
+  }
+  input vbs : money {
+    label de "sonstige Versorgungsbezüge (VBS)"
+    label en "other pension payments (VBS)"
+  }
+  input sterbe : money {
+    label de "Sterbegeld und Kapitalauszahlungen/Abfindungen (STERBE)"
+    label en "death benefits and lump sums (STERBE)"
+  }
+  input sonstent : money {
+    label de "in VBS enthaltene Entschädigungen (SONSTENT)"
+    label en "compensation in VBS (SONSTENT)"
+  }
+  input jvbez : money {
+    label de "voraussichtliche Versorgungsbezüge im Kalenderjahr ohne sonstige Bezüge (JVBEZ)"
+    label en "expected pensions in the calendar year without other payments (JVBEZ)"
+  }
+  input jre4ent : money {
+    label de "in JVBEZ enthaltene Entschädigungen (JRE4ENT)"
+    label en "compensation in JVBEZ (JRE4ENT)"
+  }
+  input jfreib : money {
+    label de "Jahresfreibetrag (JFREIB)"
+    label en "annual allowance (JFREIB)"
+  }
+  input jhinzu : money {
+    label de "Jahreshinzurechnungsbetrag (JHINZU)"
+    label en "annual addition (JHINZU)"
+  }
+  input lzzfreib : money {
+    label de "Freibetrag für den Lohnzahlungszeitraum (LZZFREIB)"
+    label en "allowance for the pay period (LZZFREIB)"
+  }
+  input lzzhinzu : money {
+    label de "Hinzurechnungsbetrag für den Lohnzahlungszeitraum (LZZHINZU)"
+    label en "addition for the pay period (LZZHINZU)"
+  }
+
+  constant treaty_allowance : money = 10_000 EUR {
+    label de "Steuerfreibetrag nach dem DBA Türkei (JW = 1.000.000 Cent)"
+    label en "tax allowance under the treaty with Türkiye (JW = 1,000,000 cents)"
+    source "PAP DBA ab 2026, MVFRB"
+  }
+
+  // The first run (MSST, LST2026)
+  rule vfrb : money = run.vfrb(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "VFRB"
+    label en "VFRB"
+  }
+  rule vfrbs1 : money = run.vfrbs1(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "VFRBS1"
+    label en "VFRBS1"
+  }
+  rule vfrbs2 : money = run.vfrbs2(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "VFRBS2"
+    label en "VFRBS2"
+  }
+  rule wvfrb_year : money = run.wvfrb(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "WVFRB als Jahreswert"
+    label en "WVFRB as an annual value"
+  }
+  rule wvfrbo : money = run.wvfrbo(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "WVFRBO"
+    label en "WVFRBO"
+  }
+  rule wvfrbm : money = run.wvfrbm(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib, jhinzu = jhinzu, lzzfreib = lzzfreib, lzzhinzu = lzzhinzu) {
+    label de "WVFRBM"
+    label en "WVFRBM"
+  }
+
+  // MVFRB, UMVFRB: the further allowance under the treaty with Türkiye, class I only
+  rule further : bool = land == treaty.turkey and stkl == de.bmf.pap_lst_2026.tax_class.i {
+    label de "weitergehender Steuerfreibetrag nach dem DBA Türkei (LAND = 1, STKL = 1)"
+    label en "further tax allowance under the treaty with Türkiye (LAND = 1, STKL = 1)"
+    source "PAP DBA ab 2026, MVFRB"
+  }
+  rule vfrblzz_used : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = vfrb) + vfrbs2 {
+    label de "durch die Pauschbeträge verbrauchter Freibetrag im Lohnzahlungszeitraum (VFRBLZZ)"
+    label en "allowance used by the lump sums in the pay period (VFRBLZZ)"
+    source "PAP DBA ab 2026, MVFRB"
+  }
+  rule wvfrb : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = wvfrb_year) {
+    label de "WVFRB für den Lohnzahlungszeitraum"
+    label en "WVFRB for the pay period"
+    source "PAP DBA ab 2026, MVFRB"
+  }
+  rule dbafreib : money = de.bmf.pap_lst_2026.share.anteil1(lzz = lzz, jw = treaty_allowance) - vfrblzz_used + vfrbs2 {
+    label de "über die Pauschbeträge hinaus zu berücksichtigender Freibetrag (DBAFREIB)"
+    label en "allowance beyond the lump sums (DBAFREIB)"
+    source "PAP DBA ab 2026, MVFRB"
+  }
+  rule extra_lzz : money = if further then min(dbafreib, wvfrb) else 0 EUR {
+    label de "Zuschlag zu LZZFREIB"
+    label en "addition to LZZFREIB"
+    source "PAP DBA ab 2026, UMVFRB"
+  }
+  rule dbafreib_other : money = treaty_allowance - vfrbs1 - vfrbs2 {
+    label de "verbleibender Freibetrag für sonstige Bezüge (DBAFREIB)"
+    label en "allowance left for other payments (DBAFREIB)"
+    source "PAP DBA ab 2026, UMVFRB"
+  }
+  rule extra_j : money = if further and dbafreib_other > 0 EUR then min(dbafreib_other, wvfrbm) else 0 EUR {
+    label de "Zuschlag zu JFREIB"
+    label en "addition to JFREIB"
+    source "PAP DBA ab 2026, UMVFRB"
+  }
+  rule vfrblzz : money {
+    label de "im Lohnabrechnungszeitraum berücksichtigter Freibetrag nach dem DBA Türkei (VFRBLZZ)"
+    label en "allowance under the treaty with Türkiye in the pay period (VFRBLZZ)"
+    source "PAP DBA ab 2026, MVFRB, UMVFRB"
+    default 0 EUR
+    unless further and dbafreib_other > 0 EUR and dbafreib_other >= wvfrbm then vfrblzz_used + extra_lzz + wvfrbm - wvfrbo
+    unless further and dbafreib_other > 0 EUR and dbafreib_other - wvfrbo > 0 EUR then vfrblzz_used + extra_lzz + dbafreib_other - wvfrbo
+    unless further then vfrblzz_used + extra_lzz
+    unless land == treaty.turkey then vfrblzz_used
+  }
+
+  // The second run, with the allowances of the treaty
+  rule lstlzz_run : money = run.lstlzz(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib + extra_j, jhinzu = jhinzu, lzzfreib = lzzfreib + extra_lzz, lzzhinzu = lzzhinzu) {
+    label de "LSTLZZ vor der Begrenzung"
+    label en "LSTLZZ before the limit"
+  }
+  rule solzlzz_run : money = run.solzlzz(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib + extra_j, jhinzu = jhinzu, lzzfreib = lzzfreib + extra_lzz, lzzhinzu = lzzhinzu) {
+    label de "SOLZLZZ vor der Begrenzung"
+    label en "SOLZLZZ before the limit"
+  }
+  rule sts_run : money = run.sts(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib + extra_j, jhinzu = jhinzu, lzzfreib = lzzfreib + extra_lzz, lzzhinzu = lzzhinzu) {
+    label de "STS vor der Begrenzung"
+    label en "STS before the limit"
+  }
+  rule solzs_run : money = run.solzs(stkl = stkl, lzz = lzz, ins = ins, vbez = vbez, vbezm = vbezm, vbezs = vbezs, vjahr = vjahr, zmvb = zmvb, vbs = vbs, sterbe = sterbe, sonstent = sonstent, jvbez = jvbez, jre4ent = jre4ent, jfreib = jfreib + extra_j, jhinzu = jhinzu, lzzfreib = lzzfreib + extra_lzz, lzzhinzu = lzzhinzu) {
+    label de "SOLZS vor der Begrenzung"
+    label en "SOLZS before the limit"
+  }
+
+  // MMAXST
+  rule stg : money = lstlzz_run + solzlzz_run + sts_run + solzs_run {
+    label de "Gesamtsteuerbelastung ohne DBA (STG)"
+    label en "total tax without the treaty (STG)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule rate : decimal {
+    label de "Quellensteuerhöchstsatz"
+    label en "maximum rate at source"
+    source "PAP DBA ab 2026, MMAXST"
+    by land
+    turkey: 0.10
+    norway: 0.15
+    spain: if vjahr < 2030 then 0.05 else 0.10
+  }
+  rule stdba : money = round_down((vbez + vbs) * rate, 0.01 EUR) {
+    label de "maximale Gesamtsteuerbelastung nach dem DBA (STDBA)"
+    label en "maximum total tax under the treaty (STDBA)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule excess : money = max(stg - stdba, 0 EUR) {
+    label de "Überschuss über die Höchstbelastung (ST1)"
+    label en "excess over the maximum (ST1)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule solzs : money = max(solzs_run - excess, 0 EUR) {
+    label de "Solidaritätszuschlag für sonstige Bezüge (SOLZS)"
+    label en "solidarity surcharge on other payments (SOLZS)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule excess2 : money = max(excess - solzs_run, 0 EUR) {
+    label de "ST1 nach SOLZS"
+    label en "ST1 after SOLZS"
+  }
+  rule solzlzz : money = max(solzlzz_run - excess2, 0 EUR) {
+    label de "Solidaritätszuschlag für den Lohnzahlungszeitraum (SOLZLZZ)"
+    label en "solidarity surcharge for the pay period (SOLZLZZ)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule excess3 : money = max(excess2 - solzlzz_run, 0 EUR) {
+    label de "ST1 nach SOLZLZZ"
+    label en "ST1 after SOLZLZZ"
+  }
+  rule sts : money = max(sts_run - excess3, 0 EUR) {
+    label de "Lohnsteuer für sonstige Bezüge (STS)"
+    label en "wage tax on other payments (STS)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+  rule excess4 : money = max(excess3 - sts_run, 0 EUR) {
+    label de "ST1 nach STS"
+    label en "ST1 after STS"
+  }
+  rule lstlzz : money = lstlzz_run - excess4 {
+    label de "Lohnsteuer für den Lohnzahlungszeitraum (LSTLZZ)"
+    label en "wage tax for the pay period (LSTLZZ)"
+    source "PAP DBA ab 2026, MMAXST"
+  }
+}
+
+example turkey_class_i_27500 {
+  label de "Prüftabelle: 27.500 € Versorgungsbezüge, DBA Türkei, Steuerklasse I – 340 € (mit dem Freibetrag nach dem DBA)"
+  label en "Test table: pension of 27,500 euros, treaty with Türkiye, class I – 340 euros (with the treaty's allowance)"
+  source "PAP DBA ab 2026, Prüftabelle (Seite 14)"
+  statement lean "limited_wage_tax.lstlzz { land := .turkey, stkl := .i, lzz := .year, ins := { krv := true, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, vbez := 27500, vbezm := 229166 / 100, vbezs := 0, vjahr := 2026, zmvb := 12, vbs := 0, sterbe := 0, sonstent := 0, jvbez := 0, jre4ent := 0, jfreib := 0, jhinzu := 0, lzzfreib := 0, lzzhinzu := 0 } = 340"
+  proof lean "by norm_num [run.lstlzz, run.solzlzz, run.sts, run.solzs, run.vfrb, run.vfrbs1, run.vfrbs2, run.wvfrb, run.wvfrbo, run.wvfrbm, limited_wage_tax.treaty_allowance, limited_wage_tax.vfrb, limited_wage_tax.vfrbs1, limited_wage_tax.vfrbs2, limited_wage_tax.wvfrb_year, limited_wage_tax.wvfrbo, limited_wage_tax.wvfrbm, limited_wage_tax.further, limited_wage_tax.vfrblzz_used, limited_wage_tax.wvfrb, limited_wage_tax.dbafreib, limited_wage_tax.extra_lzz, limited_wage_tax.dbafreib_other, limited_wage_tax.extra_j, limited_wage_tax.vfrblzz, limited_wage_tax.lstlzz_run, limited_wage_tax.solzlzz_run, limited_wage_tax.sts_run, limited_wage_tax.solzs_run, limited_wage_tax.stg, limited_wage_tax.rate, limited_wage_tax.stdba, limited_wage_tax.excess, limited_wage_tax.solzs, limited_wage_tax.excess2, limited_wage_tax.solzlzz, limited_wage_tax.excess3, limited_wage_tax.sts, limited_wage_tax.excess4, limited_wage_tax.lstlzz, de.bmf.pap_lst_2026.tariff.gfb, de.bmf.pap_lst_2026.tariff.y, de.bmf.pap_lst_2026.tariff.z, de.bmf.pap_lst_2026.tariff.st, de.bmf.pap_lst_2026.class_5_6_step.st1, de.bmf.pap_lst_2026.class_5_6_step.st2, de.bmf.pap_lst_2026.class_5_6_step.diff, de.bmf.pap_lst_2026.class_5_6_step.mist, de.bmf.pap_lst_2026.class_5_6_step.st, de.bmf.pap_lst_2026.annual_tax.w1stkl5, de.bmf.pap_lst_2026.annual_tax.w2stkl5, de.bmf.pap_lst_2026.annual_tax.w3stkl5, de.bmf.pap_lst_2026.annual_tax.x, de.bmf.pap_lst_2026.annual_tax.st_5_6, de.bmf.pap_lst_2026.annual_tax.st, de.bmf.pap_lst_2026.share.anteil1, de.bmf.pap_lst_2026.projection.year, de.bmf.pap_lst_2026.pension_tables.tab1, de.bmf.pap_lst_2026.pension_tables.tab2, de.bmf.pap_lst_2026.pension_tables.tab3, de.bmf.pap_lst_2026.relief_tables.tab4, de.bmf.pap_lst_2026.relief_tables.tab5, de.bmf.pap_lst_2026.pension_allowance.tab1, de.bmf.pap_lst_2026.pension_allowance.tab2, de.bmf.pap_lst_2026.pension_allowance.tab3, de.bmf.pap_lst_2026.pension_allowance.vbezb, de.bmf.pap_lst_2026.pension_allowance.hfvb, de.bmf.pap_lst_2026.pension_allowance.fvbz_table, de.bmf.pap_lst_2026.pension_allowance.fvb, de.bmf.pap_lst_2026.pension_allowance.fvbso, de.bmf.pap_lst_2026.pension_allowance.hfvbzso, de.bmf.pap_lst_2026.pension_allowance.fvbzso_raw, de.bmf.pap_lst_2026.pension_allowance.fvbzso, de.bmf.pap_lst_2026.pension_allowance.hfvbz, de.bmf.pap_lst_2026.pension_allowance.fvbz, de.bmf.pap_lst_2026.old_age_relief.alte, de.bmf.pap_lst_2026.annual_wage_tax.bbgrvalv, de.bmf.pap_lst_2026.annual_wage_tax.avsatzan, de.bmf.pap_lst_2026.annual_wage_tax.rvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.bbgkvpv, de.bmf.pap_lst_2026.annual_wage_tax.kvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.pvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.zre4, de.bmf.pap_lst_2026.annual_wage_tax.zre4vp, de.bmf.pap_lst_2026.annual_wage_tax.zvbez, de.bmf.pap_lst_2026.annual_wage_tax.fvbz_limited, de.bmf.pap_lst_2026.annual_wage_tax.fvbz_table, de.bmf.pap_lst_2026.annual_wage_tax.anp_pension, de.bmf.pap_lst_2026.annual_wage_tax.anp, de.bmf.pap_lst_2026.annual_wage_tax.efa, de.bmf.pap_lst_2026.annual_wage_tax.sap, de.bmf.pap_lst_2026.annual_wage_tax.kztab, de.bmf.pap_lst_2026.annual_wage_tax.kfb, de.bmf.pap_lst_2026.annual_wage_tax.ztabfb, de.bmf.pap_lst_2026.annual_wage_tax.vspr, de.bmf.pap_lst_2026.annual_wage_tax.vspkvpv, de.bmf.pap_lst_2026.annual_wage_tax.vsp_basic, de.bmf.pap_lst_2026.annual_wage_tax.vspalv, de.bmf.pap_lst_2026.annual_wage_tax.vsphb, de.bmf.pap_lst_2026.annual_wage_tax.vspn, de.bmf.pap_lst_2026.annual_wage_tax.vsp, de.bmf.pap_lst_2026.annual_wage_tax.zve, de.bmf.pap_lst_2026.annual_wage_tax.st, de.bmf.pap_lst_2026.annual_wage_tax.st_children, de.bmf.pap_lst_2026.annual_wage_tax.vfrb, de.bmf.pap_lst_2026.annual_wage_tax.wvfrb, de.bmf.pap_lst_2026.wage_tax.solzfrei, de.bmf.pap_lst_2026.wage_tax.factor, de.bmf.pap_lst_2026.wage_tax.kztab, de.bmf.pap_lst_2026.wage_tax.zre4j, de.bmf.pap_lst_2026.wage_tax.zvbezj, de.bmf.pap_lst_2026.wage_tax.jlfreib, de.bmf.pap_lst_2026.wage_tax.jlhinzu, de.bmf.pap_lst_2026.wage_tax.fvb, de.bmf.pap_lst_2026.wage_tax.fvbz, de.bmf.pap_lst_2026.wage_tax.alte, de.bmf.pap_lst_2026.wage_tax.st, de.bmf.pap_lst_2026.wage_tax.lstjahr, de.bmf.pap_lst_2026.wage_tax.jbmg, de.bmf.pap_lst_2026.wage_tax.lstlzz_current, de.bmf.pap_lst_2026.wage_tax.solzj, de.bmf.pap_lst_2026.wage_tax.solzlzz_current, de.bmf.pap_lst_2026.wage_tax.bk_current, de.bmf.pap_lst_2026.wage_tax.other, de.bmf.pap_lst_2026.wage_tax.zmvb_other, de.bmf.pap_lst_2026.wage_tax.fvb_without, de.bmf.pap_lst_2026.wage_tax.fvbz_without, de.bmf.pap_lst_2026.wage_tax.alte_without, de.bmf.pap_lst_2026.wage_tax.lstoso, de.bmf.pap_lst_2026.wage_tax.zre4j_with, de.bmf.pap_lst_2026.wage_tax.zvbezj_with, de.bmf.pap_lst_2026.wage_tax.fvb_with, de.bmf.pap_lst_2026.wage_tax.fvbz_with, de.bmf.pap_lst_2026.wage_tax.alte_with, de.bmf.pap_lst_2026.wage_tax.lstso, de.bmf.pap_lst_2026.wage_tax.sts_raw, de.bmf.pap_lst_2026.wage_tax.sts_rounded, de.bmf.pap_lst_2026.wage_tax.negative, de.bmf.pap_lst_2026.wage_tax.offset, de.bmf.pap_lst_2026.wage_tax.sts, de.bmf.pap_lst_2026.wage_tax.solzsbmg, de.bmf.pap_lst_2026.wage_tax.solzs, de.bmf.pap_lst_2026.wage_tax.bks, de.bmf.pap_lst_2026.wage_tax.lstlzz, de.bmf.pap_lst_2026.wage_tax.solzlzz, de.bmf.pap_lst_2026.wage_tax.bk, de.bmf.pap_lst_2026.wage_tax.vfrb, de.bmf.pap_lst_2026.wage_tax.wvfrb, de.bmf.pap_lst_2026.wage_tax.vfrbs1, de.bmf.pap_lst_2026.wage_tax.wvfrbo, de.bmf.pap_lst_2026.wage_tax.vfrbs2, de.bmf.pap_lst_2026.wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
+}
+
+example spain_class_vi_5000 {
+  label de "Prüftabelle: 5.000 € Versorgungsbezüge, DBA Spanien, Steuerklasse VI – 250 € (5 %)"
+  label en "Test table: pension of 5,000 euros, treaty with Spain, class VI – 250 euros (5 %)"
+  source "PAP DBA ab 2026, Prüftabelle (Seite 14)"
+  statement lean "limited_wage_tax.lstlzz { land := .spain, stkl := .vi, lzz := .year, ins := { krv := true, alv := false, pkv := false, kvz := 29 / 10, pvs := false, pvz := true, pva := 0, pkpv := 0, pkpvagz := 0 }, vbez := 5000, vbezm := 41666 / 100, vbezs := 0, vjahr := 2026, zmvb := 12, vbs := 0, sterbe := 0, sonstent := 0, jvbez := 0, jre4ent := 0, jfreib := 0, jhinzu := 0, lzzfreib := 0, lzzhinzu := 0 } = 250"
+  proof lean "by norm_num [run.lstlzz, run.solzlzz, run.sts, run.solzs, run.vfrb, run.vfrbs1, run.vfrbs2, run.wvfrb, run.wvfrbo, run.wvfrbm, limited_wage_tax.treaty_allowance, limited_wage_tax.vfrb, limited_wage_tax.vfrbs1, limited_wage_tax.vfrbs2, limited_wage_tax.wvfrb_year, limited_wage_tax.wvfrbo, limited_wage_tax.wvfrbm, limited_wage_tax.further, limited_wage_tax.vfrblzz_used, limited_wage_tax.wvfrb, limited_wage_tax.dbafreib, limited_wage_tax.extra_lzz, limited_wage_tax.dbafreib_other, limited_wage_tax.extra_j, limited_wage_tax.vfrblzz, limited_wage_tax.lstlzz_run, limited_wage_tax.solzlzz_run, limited_wage_tax.sts_run, limited_wage_tax.solzs_run, limited_wage_tax.stg, limited_wage_tax.rate, limited_wage_tax.stdba, limited_wage_tax.excess, limited_wage_tax.solzs, limited_wage_tax.excess2, limited_wage_tax.solzlzz, limited_wage_tax.excess3, limited_wage_tax.sts, limited_wage_tax.excess4, limited_wage_tax.lstlzz, de.bmf.pap_lst_2026.tariff.gfb, de.bmf.pap_lst_2026.tariff.y, de.bmf.pap_lst_2026.tariff.z, de.bmf.pap_lst_2026.tariff.st, de.bmf.pap_lst_2026.class_5_6_step.st1, de.bmf.pap_lst_2026.class_5_6_step.st2, de.bmf.pap_lst_2026.class_5_6_step.diff, de.bmf.pap_lst_2026.class_5_6_step.mist, de.bmf.pap_lst_2026.class_5_6_step.st, de.bmf.pap_lst_2026.annual_tax.w1stkl5, de.bmf.pap_lst_2026.annual_tax.w2stkl5, de.bmf.pap_lst_2026.annual_tax.w3stkl5, de.bmf.pap_lst_2026.annual_tax.x, de.bmf.pap_lst_2026.annual_tax.st_5_6, de.bmf.pap_lst_2026.annual_tax.st, de.bmf.pap_lst_2026.share.anteil1, de.bmf.pap_lst_2026.projection.year, de.bmf.pap_lst_2026.pension_tables.tab1, de.bmf.pap_lst_2026.pension_tables.tab2, de.bmf.pap_lst_2026.pension_tables.tab3, de.bmf.pap_lst_2026.relief_tables.tab4, de.bmf.pap_lst_2026.relief_tables.tab5, de.bmf.pap_lst_2026.pension_allowance.tab1, de.bmf.pap_lst_2026.pension_allowance.tab2, de.bmf.pap_lst_2026.pension_allowance.tab3, de.bmf.pap_lst_2026.pension_allowance.vbezb, de.bmf.pap_lst_2026.pension_allowance.hfvb, de.bmf.pap_lst_2026.pension_allowance.fvbz_table, de.bmf.pap_lst_2026.pension_allowance.fvb, de.bmf.pap_lst_2026.pension_allowance.fvbso, de.bmf.pap_lst_2026.pension_allowance.hfvbzso, de.bmf.pap_lst_2026.pension_allowance.fvbzso_raw, de.bmf.pap_lst_2026.pension_allowance.fvbzso, de.bmf.pap_lst_2026.pension_allowance.hfvbz, de.bmf.pap_lst_2026.pension_allowance.fvbz, de.bmf.pap_lst_2026.old_age_relief.alte, de.bmf.pap_lst_2026.annual_wage_tax.bbgrvalv, de.bmf.pap_lst_2026.annual_wage_tax.avsatzan, de.bmf.pap_lst_2026.annual_wage_tax.rvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.bbgkvpv, de.bmf.pap_lst_2026.annual_wage_tax.kvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.pvsatzan, de.bmf.pap_lst_2026.annual_wage_tax.zre4, de.bmf.pap_lst_2026.annual_wage_tax.zre4vp, de.bmf.pap_lst_2026.annual_wage_tax.zvbez, de.bmf.pap_lst_2026.annual_wage_tax.fvbz_limited, de.bmf.pap_lst_2026.annual_wage_tax.fvbz_table, de.bmf.pap_lst_2026.annual_wage_tax.anp_pension, de.bmf.pap_lst_2026.annual_wage_tax.anp, de.bmf.pap_lst_2026.annual_wage_tax.efa, de.bmf.pap_lst_2026.annual_wage_tax.sap, de.bmf.pap_lst_2026.annual_wage_tax.kztab, de.bmf.pap_lst_2026.annual_wage_tax.kfb, de.bmf.pap_lst_2026.annual_wage_tax.ztabfb, de.bmf.pap_lst_2026.annual_wage_tax.vspr, de.bmf.pap_lst_2026.annual_wage_tax.vspkvpv, de.bmf.pap_lst_2026.annual_wage_tax.vsp_basic, de.bmf.pap_lst_2026.annual_wage_tax.vspalv, de.bmf.pap_lst_2026.annual_wage_tax.vsphb, de.bmf.pap_lst_2026.annual_wage_tax.vspn, de.bmf.pap_lst_2026.annual_wage_tax.vsp, de.bmf.pap_lst_2026.annual_wage_tax.zve, de.bmf.pap_lst_2026.annual_wage_tax.st, de.bmf.pap_lst_2026.annual_wage_tax.st_children, de.bmf.pap_lst_2026.annual_wage_tax.vfrb, de.bmf.pap_lst_2026.annual_wage_tax.wvfrb, de.bmf.pap_lst_2026.wage_tax.solzfrei, de.bmf.pap_lst_2026.wage_tax.factor, de.bmf.pap_lst_2026.wage_tax.kztab, de.bmf.pap_lst_2026.wage_tax.zre4j, de.bmf.pap_lst_2026.wage_tax.zvbezj, de.bmf.pap_lst_2026.wage_tax.jlfreib, de.bmf.pap_lst_2026.wage_tax.jlhinzu, de.bmf.pap_lst_2026.wage_tax.fvb, de.bmf.pap_lst_2026.wage_tax.fvbz, de.bmf.pap_lst_2026.wage_tax.alte, de.bmf.pap_lst_2026.wage_tax.st, de.bmf.pap_lst_2026.wage_tax.lstjahr, de.bmf.pap_lst_2026.wage_tax.jbmg, de.bmf.pap_lst_2026.wage_tax.lstlzz_current, de.bmf.pap_lst_2026.wage_tax.solzj, de.bmf.pap_lst_2026.wage_tax.solzlzz_current, de.bmf.pap_lst_2026.wage_tax.bk_current, de.bmf.pap_lst_2026.wage_tax.other, de.bmf.pap_lst_2026.wage_tax.zmvb_other, de.bmf.pap_lst_2026.wage_tax.fvb_without, de.bmf.pap_lst_2026.wage_tax.fvbz_without, de.bmf.pap_lst_2026.wage_tax.alte_without, de.bmf.pap_lst_2026.wage_tax.lstoso, de.bmf.pap_lst_2026.wage_tax.zre4j_with, de.bmf.pap_lst_2026.wage_tax.zvbezj_with, de.bmf.pap_lst_2026.wage_tax.fvb_with, de.bmf.pap_lst_2026.wage_tax.fvbz_with, de.bmf.pap_lst_2026.wage_tax.alte_with, de.bmf.pap_lst_2026.wage_tax.lstso, de.bmf.pap_lst_2026.wage_tax.sts_raw, de.bmf.pap_lst_2026.wage_tax.sts_rounded, de.bmf.pap_lst_2026.wage_tax.negative, de.bmf.pap_lst_2026.wage_tax.offset, de.bmf.pap_lst_2026.wage_tax.sts, de.bmf.pap_lst_2026.wage_tax.solzsbmg, de.bmf.pap_lst_2026.wage_tax.solzs, de.bmf.pap_lst_2026.wage_tax.bks, de.bmf.pap_lst_2026.wage_tax.lstlzz, de.bmf.pap_lst_2026.wage_tax.solzlzz, de.bmf.pap_lst_2026.wage_tax.bk, de.bmf.pap_lst_2026.wage_tax.vfrb, de.bmf.pap_lst_2026.wage_tax.wvfrb, de.bmf.pap_lst_2026.wage_tax.vfrbs1, de.bmf.pap_lst_2026.wage_tax.wvfrbo, de.bmf.pap_lst_2026.wage_tax.vfrbs2, de.bmf.pap_lst_2026.wage_tax.wvfrbm, verkodo.round_down, verkodo.round_up]"
+}
