@@ -4,6 +4,8 @@
 // (https://www.gesetze-im-internet.de/gg/präambel.html); values by their ISO 3166-2:DE codes.
 
 module de.states original de, en
+  label de "Die Länder"
+  label en "The German states"
 
 enum state {
   label de "Land"

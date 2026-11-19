@@ -4,6 +4,9 @@
 // Source: the official text at https://www.gesetze-im-internet.de/einigvtr/art_2.html (retrieved 2026-11-06).
 
 module de.einigvtr.a2 original de, en
+  label de "Art. 2 Einigungsvertrag"
+  label en "Art. 2 Unification Treaty"
+  source "Einigungsvertrag (EinigVtr)"
 
 norm unity_day {
   label de "Tag der Deutschen Einheit"
