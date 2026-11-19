@@ -36,7 +36,7 @@ module de.bmf.pap_lst_2026 original de, en
 enum tax_class {
   label de "Steuerklasse"
   label en "Tax class"
-  source "STKL"
+  source "PAP 2026, STKL"
   value i { label de "I" label en "I" }
   value ii { label de "II" label en "II" }
   value iii { label de "III" label en "III" }
@@ -48,7 +48,7 @@ enum tax_class {
 enum pay_period {
   label de "Lohnzahlungszeitraum"
   label en "Pay period"
-  source "LZZ"
+  source "PAP 2026, LZZ"
   value year { label de "Jahr" label en "year" }
   value month { label de "Monat" label en "month" }
   value week { label de "Woche" label en "week" }

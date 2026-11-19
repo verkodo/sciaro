@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The Federal Ministry of Finance: its plans for the wage tax of 2026 (letter of 2025-11-12, IV C 5 - S 2361/00025/
+// 016/028, with three annexes, https://www.bundesfinanzministerium.de/Content/DE/Downloads/Steuern/Steuerarten/
+// Lohnsteuer/Programmablaufplan/2025-11-12-PAP-2026.html), the machine-readable plan and its calculator, and the
+// Income Tax Act the plans rest on. Addresses checked 2026-11-19.
+
+module de.bmf original de, en
+  label de "Bundesministerium der Finanzen – Lohnsteuer"
+  label en "Federal Ministry of Finance – wage tax"
+
+document pap_2026
+  label de "Programmablaufplan für die maschinelle Berechnung der Lohnsteuer 2026 (Anlage 1)"
+  label en "Flowchart for the machine computation of the wage tax 2026 (Annex 1)"
+  cite "PAP 2026"
+  url "https://www.bundesfinanzministerium.de/Content/DE/Downloads/Steuern/Steuerarten/Lohnsteuer/Programmablaufplan/2025-11-12-PAP-2026-anlage-1.pdf?__blob=publicationFile"
+  retrieved "2026-11-19"
+
+document pap_tables_2026
+  label de "Programmablaufplan für die Erstellung von Lohnsteuertabellen 2026 (Anlage 2)"
+  label en "Flowchart for the wage tax tables 2026 (Annex 2)"
+  cite "PAP Lohnsteuertabellen 2026"
+  url "https://www.bundesfinanzministerium.de/Content/DE/Downloads/Steuern/Steuerarten/Lohnsteuer/Programmablaufplan/2025-11-12-PAP-2026-anlage-2.pdf?__blob=publicationFile"
+  retrieved "2026-11-19"
+
+document pap_dba_2026
+  label de "Programmablaufplan für die Begrenzung der Lohnsteuer nach den DBA ab 2026 (Anlage 3)"
+  label en "Flowchart for limiting the wage tax under double taxation treaties from 2026 (Annex 3)"
+  cite "PAP DBA ab 2026"
+  url "https://www.bundesfinanzministerium.de/Content/DE/Downloads/Steuern/Steuerarten/Lohnsteuer/Programmablaufplan/2025-11-12-PAP-2026-anlage-3.pdf?__blob=publicationFile"
+  retrieved "2026-11-19"
+
+document pap_xml_2026
+  label de "Maschinenlesbarer Programmablaufplan Lohnsteuer 2026 (XML)"
+  label en "Machine-readable flowchart of the wage tax 2026 (XML)"
+  cite "Lohnsteuer2026.xml"
+  url "https://www.bmf-steuerrechner.de/javax.faces.resource/daten/xmls/Lohnsteuer2026.xml.xhtml"
+  retrieved "2026-11-18"
+
+document calculator
+  label de "Lohn- und Einkommensteuerrechner des BMF"
+  label en "The BMF's wage and income tax calculator"
+  cite "bmf-steuerrechner.de"
+  url "https://www.bmf-steuerrechner.de/bl/bl2026/eingabeformbl2026.xhtml"
+  retrieved "2026-11-18"
+
+document estg
+  label de "Einkommensteuergesetz"
+  label en "Income Tax Act"
+  cite "EStG"
+  url "https://www.gesetze-im-internet.de/estg/"
+  section "https://www.gesetze-im-internet.de/estg/__{n}.html"
+  retrieved "2026-11-19"

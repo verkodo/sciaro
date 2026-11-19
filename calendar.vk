@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// Calendars: the computation of days, and the books it follows.
+
+module calendar original de, en
+  label de "Kalender"
+  label en "Calendar"
+
+document meeus
+  label de "J. Meeus, Astronomical Algorithms (1991)"
+  label en "J. Meeus, Astronomical Algorithms (1991)"
+  cite "J. Meeus, Astronomical Algorithms"

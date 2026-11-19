@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The public holidays act of Brandenburg (Feiertagsgesetz) – the act, its address on BRAVORS, the Land's portal of its
+// law (sections there have no addresses of their own).
+
+module de.bb.ftg original de, en
+  label de "Feiertagsgesetz Brandenburg (FTG)"
+  label en "Public Holidays Act of Brandenburg (FTG)"
+
+document ftg
+  label de "Feiertagsgesetz Brandenburg"
+  label en "Public Holidays Act of Brandenburg"
+  cite "FTG Brandenburg"
+  url "https://bravors.brandenburg.de/gesetze/ftg_2015"
+  retrieved "2026-11-06"

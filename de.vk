@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// German law: the area and the documents it cites that have no folder of their own here – the Basic Law.
+// Addresses checked 2026-11-19.
+
+module de original de, en
+  label de "Recht – Deutschland"
+  label en "Law – Germany"
+
+document gg
+  label de "Grundgesetz für die Bundesrepublik Deutschland"
+  label en "Basic Law for the Federal Republic of Germany"
+  cite "GG"
+  url "https://www.gesetze-im-internet.de/gg/"
+  section "https://www.gesetze-im-internet.de/gg/art_{n}.html"
+  retrieved "2026-11-19"

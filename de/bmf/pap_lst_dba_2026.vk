@@ -25,7 +25,7 @@ module de.bmf.pap_lst_dba_2026 original de, en
 enum treaty {
   label de "Doppelbesteuerungsabkommen"
   label en "Double taxation treaty"
-  source "LAND"
+  source "PAP DBA ab 2026, LAND"
   value turkey { label de "DBA Türkei" label en "treaty with Türkiye" }
   value norway { label de "DBA Norwegen" label en "treaty with Norway" }
   value spain { label de "DBA Spanien" label en "treaty with Spain" }

@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The Unification Treaty (Einigungsvertrag) – the treaty, its address on gesetze-im-internet.de.
+
+module de.einigvtr original de, en
+  label de "Einigungsvertrag (EinigVtr)"
+  label en "Unification Treaty (EinigVtr)"
+
+document einigvtr
+  label de "Einigungsvertrag"
+  label en "Unification Treaty"
+  cite "Einigungsvertrag"
+  cite "EinigVtr"
+  url "https://www.gesetze-im-internet.de/einigvtr/"
+  section "https://www.gesetze-im-internet.de/einigvtr/art_{n}.html"
+  retrieved "2026-11-06"

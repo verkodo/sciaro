@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The law of the Land Brandenburg.
+
+module de.bb original de, en
+  label de "Brandenburg"
+  label en "Brandenburg"

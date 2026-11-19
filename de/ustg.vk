@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: CC-BY-4.0
+//
+// The Value Added Tax Act (Umsatzsteuergesetz) – the act, its address on gesetze-im-internet.de.
+
+module de.ustg original de, en
+  label de "Umsatzsteuergesetz (UStG)"
+  label en "Value Added Tax Act (UStG)"
+
+document ustg
+  label de "Umsatzsteuergesetz"
+  label en "Value Added Tax Act"
+  cite "UStG"
+  url "https://www.gesetze-im-internet.de/ustg_1980/"
+  section "https://www.gesetze-im-internet.de/ustg_1980/__{n}.html"
+  retrieved "2026-11-06"
